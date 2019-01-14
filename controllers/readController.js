@@ -10,10 +10,18 @@ module.exports = {
                     if (!article) {
                         reject(null)
                     }
+                    // debugger;
+                    //console.log(meta)
                     let content = article ? article.content : null;
 
-                    article.close()
-                    resolve(content)
+                    if (!article) {
+                        resolve(null)
+                    } else {
+                        article.close()
+                        resolve(content)
+                    }
+
+
                 })
             }
             catch (error) {

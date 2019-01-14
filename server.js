@@ -15,10 +15,10 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
 
-var certOptions = {
-    key: fs.readFileSync(path.resolve('./config/cert/key.pem')),
-    cert: fs.readFileSync(path.resolve('./config/cert/cert.pem'))
-}
+// var certOptions = {
+//     key: fs.readFileSync(path.resolve('./config/cert/key.pem')),
+//     cert: fs.readFileSync(path.resolve('./config/cert/cert.pem'))
+// }
 
 app.get('/', (req, res) => {
     res.send('An alligator approaches!');
