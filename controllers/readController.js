@@ -13,12 +13,13 @@ module.exports = {
                     // debugger;
                     //console.log(meta)
                     let content = article ? article.content : null;
+                    let title = article ? article.title : null;
 
                     if (!article) {
                         resolve(null)
                     } else {
                         article.close()
-                        resolve(content)
+                        resolve({ content, title })
                     }
 
 
