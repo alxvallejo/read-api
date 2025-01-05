@@ -1,7 +1,7 @@
 var read = require('node-readability');
 
 module.exports = {
-  readUrl: (url) => {
+  readUrl: (url, token) => {
     return new Promise((resolve, reject) => {
       let httpsUrl = url.replace('http://', 'https://');
       try {
@@ -10,6 +10,7 @@ module.exports = {
           {
             headers: {
               'User-Agent': 'web:socket:v1.2.0 (by /u/no_spoon)',
+              Authorization: 'Bearer ' + token,
             },
           },
           (err, article, meta) => {
