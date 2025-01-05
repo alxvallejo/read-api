@@ -19,7 +19,7 @@ module.exports = {
             }
             // debugger;
             //console.log(meta)
-            console.log('article: ', article);
+            // console.log('article: ', article);
             let content = article ? article.content : null;
 
             let title = article ? article.title : null;
@@ -33,6 +33,7 @@ module.exports = {
           }
         );
       } catch (error) {
+        console.log('error on readUrl: ', error);
         reject(error);
       }
     });

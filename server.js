@@ -27,7 +27,7 @@ app.post('/getContent', (req, res) => {
   //console.log('req.body', req.body)
   //res.send('Some data')
 
-  read.readUrl(req.body.url).then(
+  read.readUrl(req.body.url, req.body.token).then(
     (content) => {
       res.send(content);
     },
