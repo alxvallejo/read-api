@@ -1,0 +1,19 @@
+image: node:18
+
+pipelines:
+  branches:
+    master:
+      - step:
+          name: Simple SSH Test
+          script:
+            - pipe: atlassian/ssh-run:0.4.1
+              variables:
+                SSH_USER: 'alxvallejo'
+                SERVER: 'seojeek.com'
+                DEBUG: 'true'
+                COMMAND: |
+                  echo "SSH connection successful!"
+                  pwd
+                  whoami
+                  ls -la /var/www/
+                  echo "Test complete"
