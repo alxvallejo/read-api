@@ -1,119 +1,33 @@
 image: node:18
 
-definitions:
-  services:
-    docker:
-      memory: 2048
-
 pipelines:
-  default:
-    - step:
-        name: Build and Test
-        script:
-          - node --version
-          - npm --version
-          - npm ci
-          - echo "✅ Dependencies installed successfully!"
-
   branches:
     master:
       - step:
-          name: Deploy to Production (Debug Version)
-          deployment: production
+          name: Test SSH Connection
           script:
-            # Install dependencies locally
-            - npm ci
+            # First, test basic SSH connectivity
+            - echo "Testing basic SSH connection..."
+            - apt-get update && apt-get install -y openssh-client
+            - mkdir -p ~/.ssh
+            - echo "Host seojeek.com" >> ~/.ssh/config
+            - echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+            - echo "  UserKnownHostsFile /dev/null" >> ~/.ssh/config
+            - chmod 600 ~/.ssh/config
             
-            # Deploy to server with detailed debugging
+            # Try the SSH pipe with a very simple command
             - pipe: atlassian/ssh-run:0.4.1
               variables:
                 SSH_USER: 'alxvallejo'
                 SERVER: 'seojeek.com'
-                MODE: 'script'
-                DEBUG: 'true'
-                COMMAND: |
-                  #!/bin/bash
-                  set -x  # Enable debug output
-                  set -e  # Exit on any error
-                  
-                  echo "=== Starting deployment ==="
-                  echo "Current user: $(whoami)"
-                  echo "Current directory: $(pwd)"
-                  
-                  echo "=== Checking if directory exists ==="
-                  if [ -d "/var/www/read-api" ]; then
-                    echo "✓ Directory exists"
-                    ls -la /var/www/read-api | head -5
-                  else
-                    echo "✗ Directory does not exist"
-                    echo "Creating directory..."
-                    sudo mkdir -p /var/www/read-api || echo "Failed to create directory"
-                    sudo chown alxvallejo:alxvallejo /var/www/read-api || echo "Failed to set ownership"
-                  fi
-                  
-                  echo "=== Navigating to directory ==="
-                  cd /var/www/read-api || { echo "Failed to cd to /var/www/read-api"; exit 1; }
-                  
-                  echo "=== Checking git repository ==="
-                  if [ -d ".git" ]; then
-                    echo "✓ Git repository exists"
-                    git remote -v
-                  else
-                    echo "✗ Not a git repository"
-                    echo "Cloning repository..."
-                    cd /var/www
-                    git clone git@bitbucket.org:alxvallejo/read-api.git || { echo "Git clone failed"; exit 1; }
-                    cd read-api
-                  fi
-                  
-                  echo "=== Pulling latest changes ==="
-                  git pull origin master || { echo "Git pull failed"; exit 1; }
-                  
-                  echo "=== Checking Node.js ==="
-                  which node || { echo "Node.js not found"; exit 1; }
-                  node --version
-                  npm --version
-                  
-                  echo "=== Installing dependencies ==="
-                  npm ci --production || { echo "npm ci failed"; exit 1; }
-                  
-                  echo "=== Checking PM2 ==="
-                  if command -v pm2 &> /dev/null; then
-                    echo "✓ PM2 is installed"
-                    pm2 --version
-                    
-                    echo "=== Managing PM2 process ==="
-                    pm2 list
-                    
-                    if pm2 list | grep -q "read-api"; then
-                      echo "Restarting existing process..."
-                      pm2 restart read-api --update-env
-                    else
-                      echo "Starting new process..."
-                      pm2 start server.js --name read-api -i 2
-                    fi
-                    
-                    pm2 save
-                  else
-                    echo "✗ PM2 not installed"
-                    echo "Installing PM2..."
-                    sudo npm install -g pm2 || echo "PM2 installation failed"
-                    
-                    echo "Starting with PM2..."
-                    pm2 start server.js --name read-api -i 2 || echo "PM2 start failed"
-                    pm2 save || echo "PM2 save failed"
-                  fi
-                  
-                  echo "=== Testing API ==="
-                  sleep 3
-                  curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost:3000/ || echo "API test failed"
-                  
-                  echo "=== Deployment complete ==="
-
-    develop:
+                COMMAND: 'echo "SSH works!"; pwd; whoami'
+                
       - step:
-          name: Deploy to Staging
-          deployment: staging
+          name: Manual SSH Test
           script:
-            - npm ci
-            - echo "✅ Build successful for staging!"
+            # Alternative approach without the pipe
+            - echo "Attempting manual SSH test..."
+            - apt-get update && apt-get install -y sshpass
+            - echo "If this step asks for password, the SSH key is not working"
+            # This will fail if password is needed, which tells us the key isn't set up
+            - ssh -o BatchMode=yes -o StrictHostKeyChecking=no alxvallejo@seojeek.com "echo 'Connected successfully'" || echo "SSH key authentication failed"
