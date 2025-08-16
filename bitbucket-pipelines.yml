@@ -1,0 +1,102 @@
+image: node:18
+
+definitions:
+  services:
+    docker:
+      memory: 2048
+
+pipelines:
+  default:
+    - step:
+        name: Build and Test
+        script:
+          - node --version
+          - npm --version
+          - npm ci
+          - echo "✅ Dependencies installed successfully!"
+          # Add tests here when available
+          # - npm test
+
+  branches:
+    master:
+      - step:
+          name: Deploy to Production
+          deployment: production
+          script:
+            # Install dependencies locally to ensure package-lock
+            - npm ci
+            
+            # Deploy to server via SSH using Bitbucket's SSH key
+            - pipe: atlassian/ssh-run:0.4.1
+              variables:
+                SSH_USER: 'alxvallejo'
+                SERVER: 'seojeek.com'
+                MODE: 'script'
+                COMMAND: |
+                  set -e
+                  echo "📦 Starting read-api deployment on server..."
+                  
+                  # Navigate to API directory
+                  cd /var/www/read-api || { echo "❌ API directory not found"; exit 1; }
+                  
+                  # Store current process ID if using PM2
+                  if command -v pm2 &> /dev/null; then
+                    PM2_RUNNING=$(pm2 list | grep -c "read-api" || true)
+                  fi
+                  
+                  # Pull latest changes
+                  echo "📥 Pulling latest changes..."
+                  git pull origin master
+                  
+                  # Install dependencies
+                  echo "📦 Installing dependencies..."
+                  npm ci --production
+                  
+                  # Restart the service
+                  echo "🔄 Restarting API service..."
+                  if [ "$PM2_RUNNING" -gt 0 ]; then
+                    echo "Using PM2 to restart..."
+                    pm2 restart read-api --update-env
+                    pm2 save
+                  elif [ -f "/etc/systemd/system/read-api.service" ]; then
+                    echo "Using systemd to restart..."
+                    sudo systemctl restart read-api
+                    sudo systemctl status read-api --no-pager
+                  else
+                    echo "⚠️ No process manager detected. Starting with PM2..."
+                    # Install PM2 if not present
+                    if ! command -v pm2 &> /dev/null; then
+                      sudo npm install -g pm2
+                    fi
+                    # Start with PM2
+                    pm2 start server.js --name read-api -i 2
+                    pm2 save
+                    pm2 startup systemd -u alxvallejo --hp /home/alxvallejo
+                  fi
+                  
+                  # Validate deployment
+                  echo "✅ Validating API deployment..."
+                  sleep 3
+                  
+                  # Test the API endpoint
+                  API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/ || echo "000")
+                  if [ "$API_STATUS" = "200" ]; then
+                    echo "✅ API is responding correctly!"
+                  else
+                    echo "⚠️ API returned status: $API_STATUS"
+                    echo "Checking logs..."
+                    if [ "$PM2_RUNNING" -gt 0 ]; then
+                      pm2 logs read-api --lines 20 --nostream
+                    fi
+                  fi
+                  
+                  echo "🎉 Read-API deployment complete!"
+
+    develop:
+      - step:
+          name: Deploy to Staging
+          deployment: staging
+          script:
+            - npm ci
+            - echo "✅ Build successful for staging!"
+            # Add staging deployment steps here when ready
