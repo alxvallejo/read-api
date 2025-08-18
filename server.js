@@ -1,4 +1,5 @@
 const read = require('./controllers/readController.js');
+const redditProxy = require('./controllers/redditProxyController.js');
 var cors = require('cors');
 var bodyParser = require('body-parser');
 var path = require('path');
@@ -47,6 +48,13 @@ app.post('/getContent', (req, res) => {
   //     res.send(err)
   // }
 });
+
+// Reddit API proxy endpoints
+app.get('/api/reddit/me', redditProxy.getMe);
+app.get('/api/reddit/user/:username/saved', redditProxy.getSaved);
+app.post('/api/reddit/unsave', redditProxy.unsave);
+app.post('/api/reddit/save', redditProxy.save);
+app.get('/api/reddit/by_id/:fullname', redditProxy.getById);
 
 //var server = https.createServer(certOptions, app).listen(port, () => console.log('Alex made a thing at port ' + port))
 
