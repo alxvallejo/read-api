@@ -50,6 +50,7 @@ app.post('/getContent', (req, res) => {
 });
 
 // Reddit API proxy endpoints
+app.post('/api/reddit/access_token', redditProxy.getAccessToken);
 app.get('/api/reddit/me', redditProxy.getMe);
 app.get('/api/reddit/user/:username/saved', redditProxy.getSaved);
 app.post('/api/reddit/unsave', redditProxy.unsave);

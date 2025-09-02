@@ -133,6 +133,38 @@ const redditProxy = {
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
+  },
+
+  async getAccessToken(req, res) {
+    try {
+      const { code, redirect_uri, client_id, client_secret } = req.body;
+      
+      if (!code || !redirect_uri || !client_id || !client_secret) {
+        return res.status(400).json({ error: 'Missing required parameters' });
+      }
+
+      const queryString = require('querystring');
+      const credentials = Buffer.from(`${client_id}:${client_secret}`).toString('base64');
+      
+      const response = await fetch('https://www.reddit.com/api/v1/access_token', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${credentials}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'Reddzit/1.0'
+        },
+        body: queryString.stringify({
+          grant_type: 'authorization_code',
+          code: code,
+          redirect_uri: redirect_uri
+        })
+      });
+
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
   }
 };
 
