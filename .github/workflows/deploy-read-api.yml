@@ -53,7 +53,8 @@ jobs:
                 exit 1
               fi
             fi
-            tar -xzf /tmp/read-api.tar.gz -C /var/www/read-api
+            # Extract without trying to preserve owner/perms/mtime to avoid utime/mode errors
+            tar -xzf /tmp/read-api.tar.gz -C /var/www/read-api --no-same-owner --no-same-permissions -m || true
             rm -f /tmp/read-api.tar.gz
             cd /var/www/read-api
             npm ci --production
