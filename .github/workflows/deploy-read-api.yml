@@ -53,6 +53,10 @@ jobs:
                 exit 1
               fi
             fi
+            # If we have sudo, ensure user owns the directory to avoid permission issues
+            if sudo -n true 2>/dev/null; then
+              sudo chown -R $USER:$USER /var/www/read-api
+            fi
             # Extract without trying to preserve owner/perms/mtime to avoid utime/mode errors
             tar -xzf /tmp/read-api.tar.gz -C /var/www/read-api --no-same-owner --no-same-permissions -m || true
             rm -f /tmp/read-api.tar.gz
