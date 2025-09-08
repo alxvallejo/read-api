@@ -19,7 +19,7 @@ jobs:
           cache: 'npm'
 
       - name: Install production dependencies
-        run: npm ci --production
+        run: npm install --production
 
       - name: Create deployment package
         run: |
