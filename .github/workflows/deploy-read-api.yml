@@ -73,8 +73,12 @@ jobs:
             tar -xzf /tmp/read-api.tar.gz -C /var/www/read-api --no-same-owner --no-same-permissions -m || true
             rm -f /tmp/read-api.tar.gz
             cd /var/www/read-api
+            # Require pm2 to be preinstalled on the server (avoids using server npm)
             if ! command -v pm2 >/dev/null 2>&1; then
-              if sudo -n true 2>/dev/null; then sudo npm install -g pm2; else npm install -g pm2; fi
+              echo "pm2 is not installed on the server. Install Node LTS and pm2, e.g.:"
+              echo "  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs"
+              echo "  sudo npm install -g pm2"
+              exit 1
             fi
             if pm2 list | grep -q "read-api"; then
               pm2 restart read-api --update-env
