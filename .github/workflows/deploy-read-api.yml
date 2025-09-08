@@ -23,7 +23,8 @@ jobs:
 
       - name: Create deployment package
         run: |
-          tar --exclude='./node_modules' --exclude='./.git' -czf read-api.tar.gz .
+          # Exclude node_modules, .git, and the output tar itself to avoid "file changed as we read it"
+          tar --exclude='./node_modules' --exclude='./.git' --exclude='./read-api.tar.gz' -czf read-api.tar.gz .
 
       - name: Copy package to server
         uses: appleboy/scp-action@v0.1.7
