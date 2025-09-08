@@ -18,13 +18,25 @@ jobs:
           node-version: 18
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install production dependencies
+        run: npm ci --production
 
       - name: Create deployment package
         run: |
-          # Use git archive to avoid tar reading live files that might change
-          git archive --format=tar.gz -o read-api.tar.gz HEAD
+          set -e
+          rm -rf package
+          mkdir -p package
+          # Stage source files excluding VCS/CI metadata
+          rsync -a --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude "read-api.tar.gz" \
+            --exclude "package" \
+            ./ package/
+          # Include installed production node_modules
+          rsync -a node_modules/ package/node_modules/
+          # Create archive from staged folder to avoid tar reading the output file
+          tar -C package -czf read-api.tar.gz .
 
       - name: Copy package to server
         uses: appleboy/scp-action@v0.1.7
@@ -61,7 +73,6 @@ jobs:
             tar -xzf /tmp/read-api.tar.gz -C /var/www/read-api --no-same-owner --no-same-permissions -m || true
             rm -f /tmp/read-api.tar.gz
             cd /var/www/read-api
-            npm ci --production
             if ! command -v pm2 >/dev/null 2>&1; then
               if sudo -n true 2>/dev/null; then sudo npm install -g pm2; else npm install -g pm2; fi
             fi
