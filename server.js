@@ -1,17 +1,23 @@
 const read = require('./controllers/readController.js');
 const redditProxy = require('./controllers/redditProxyController.js');
-var cors = require('cors');
-var bodyParser = require('body-parser');
-var path = require('path');
-var fs = require('fs');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const path = require('path');
+const fs = require('fs');
 const express = require('express');
-var helmet = require('helmet');
-var https = require('https');
+const helmet = require('helmet');
+const https = require('https');
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 app.use(helmet());
-app.use(cors());
+// Configure CORS; default to permissive if not set
+const corsOrigin = process.env.CORS_ORIGIN;
+if (corsOrigin) {
+  app.use(cors({ origin: corsOrigin }));
+} else {
+  app.use(cors());
+}
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
@@ -50,6 +56,10 @@ app.post('/getContent', (req, res) => {
 });
 
 // Reddit API proxy endpoints
+// New OAuth token/refresh endpoints using server env vars
+app.post('/api/reddit/oauth/token', redditProxy.oauthToken);
+app.post('/api/reddit/oauth/refresh', redditProxy.oauthRefresh);
+// Legacy endpoint (expects client_id/secret in body) — kept for backward compatibility
 app.post('/api/reddit/access_token', redditProxy.getAccessToken);
 app.get('/api/reddit/me', redditProxy.getMe);
 app.get('/api/reddit/user/:username/saved', redditProxy.getSaved);
@@ -59,4 +69,4 @@ app.get('/api/reddit/by_id/:fullname', redditProxy.getById);
 
 //var server = https.createServer(certOptions, app).listen(port, () => console.log('Alex made a thing at port ' + port))
 
-app.listen(3000, () => console.log('Gator app listening on port 3000!'));
+app.listen(port, () => console.log(`Read API listening on port ${port}!`));

@@ -1,6 +1,143 @@
 # Read API
 
-URL scrapper and backend API for Reddzit.
+Backend API for Reddzit. Provides:
+- Content extraction (`POST /getContent`)
+- Reddit API proxy endpoints (so the frontend never talks directly to Reddit OAuth)
 
-The node server should be automatically running as a background process, but in the event of server restarts, you can run `pm2 start app.js` at `/var/www/read-api` to restart the pm2 instance.
-# Pipeline test Sat Aug 16 13:50:59 EDT 2025
+The Node server runs behind PM2 in production. If it stops, you can restart it on the server with:
+
+```
+cd /var/www/read-api
+pm2 start server.js --name read-api -i 2 --update-env
+```
+
+## Environment Variables
+
+Define these in your server environment (PM2 ecosystem, shell profile, or deployment env). Do not expose secrets in the frontend.
+
+- `REDDIT_CLIENT_ID`: Reddit app client id.
+- `REDDIT_CLIENT_SECRET`: Reddit app client secret (server-only).
+- `REDDIT_REDIRECT_URI`: The exact redirect URI registered in your Reddit app (e.g., `https://reddzit.seojeek.com/reddit`).
+- `CORS_ORIGIN` (optional but recommended): Allowed browser origin, e.g., `https://reddzit.seojeek.com` (defaults to `*` if not set).
+- `PORT` (optional): Defaults to `3000`.
+- `USER_AGENT` (optional): Custom UA for Reddit requests (defaults to `Reddzit/1.0`).
+
+Example (local dev):
+
+```
+export REDDIT_CLIENT_ID=abc123
+export REDDIT_CLIENT_SECRET=supersecret
+export REDDIT_REDIRECT_URI=http://localhost:5173/reddit
+export CORS_ORIGIN=http://localhost:5173
+export PORT=3000
+pm2 start server.js --name read-api --update-env
+```
+
+Example (PM2 ecosystem):
+
+```js
+// ecosystem.config.js
+module.exports = {
+  apps: [{
+    name: 'read-api',
+    script: 'server.js',
+    instances: 2,
+    env: {
+      PORT: 3000,
+      CORS_ORIGIN: 'https://reddzit.seojeek.com',
+      REDDIT_CLIENT_ID: '... set on server ...',
+      REDDIT_CLIENT_SECRET: '... set on server ...',
+      REDDIT_REDIRECT_URI: 'https://reddzit.seojeek.com/reddit',
+      USER_AGENT: 'Reddzit/1.0',
+    },
+  }],
+};
+```
+
+## OAuth Token Proxy (Recommendation)
+
+To avoid CORS issues and keep secrets safe, the backend should perform the Reddit OAuth token exchange and refresh using server-side env vars. Do not send the Reddit secret from the client.
+
+Current endpoint:
+- `POST /api/reddit/access_token` (legacy): expects `client_id`, `client_secret`, and `redirect_uri` in the body. This should be deprecated in favor of server-configured env vars.
+
+Recommended endpoints (to add):
+- `POST /api/reddit/oauth/token` — Body: `{ code }` (server uses env credentials and `REDDIT_REDIRECT_URI`).
+- `POST /api/reddit/oauth/refresh` — Body: `{ refresh_token }`.
+
+Suggested implementation sketch:
+
+```js
+// Use env vars
+const { REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_REDIRECT_URI } = process.env;
+const basic = Buffer.from(`${REDDIT_CLIENT_ID}:${REDDIT_CLIENT_SECRET}`).toString('base64');
+
+app.post('/api/reddit/oauth/token', async (req, res) => {
+  const { code } = req.body || {};
+  if (!code) return res.status(400).json({ error: 'invalid_request' });
+  const body = new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: REDDIT_REDIRECT_URI });
+  const r = await fetch('https://www.reddit.com/api/v1/access_token', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: `Basic ${basic}` }, body,
+  });
+  const j = await r.json().catch(() => ({}));
+  return res.status(r.status).json(j);
+});
+
+app.post('/api/reddit/oauth/refresh', async (req, res) => {
+  const { refresh_token } = req.body || {};
+  if (!refresh_token) return res.status(400).json({ error: 'invalid_request' });
+  const body = new URLSearchParams({ grant_type: 'refresh_token', refresh_token });
+  const r = await fetch('https://www.reddit.com/api/v1/access_token', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: `Basic ${basic}` }, body,
+  });
+  const j = await r.json().catch(() => ({}));
+  return res.status(r.status).json(j);
+});
+```
+
+## CORS Configuration
+
+Restrict CORS to your SPA’s origin in `server.js`:
+
+```js
+const cors = require('cors');
+app.use(cors({ origin: process.env.CORS_ORIGIN || '*'}));
+```
+
+## Existing Reddit Proxy Endpoints
+
+These endpoints proxy Reddit API calls using the bearer token from the client:
+
+- `GET /api/reddit/me`
+- `GET /api/reddit/user/:username/saved`
+- `POST /api/reddit/save` — Body: `{ id }`
+- `POST /api/reddit/unsave` — Body: `{ id }`
+- `GET /api/reddit/by_id/:fullname`
+
+## Deployment via Bitbucket Pipelines
+
+The pipeline deploys to the server and restarts via PM2. Ensure required environment variables are present on the server. PM2’s `--update-env` reloads environment variables on restart.
+
+## Notes
+
+- Do not accept `client_secret` from the client; keep secrets server-side only.
+- The frontend should call the backend for token/refresh; it must not POST to Reddit’s token endpoint directly (CORS will block it).
+- Ensure `REDDIT_REDIRECT_URI` matches exactly what is configured in the Reddit app (including path like `/reddit`).
+
+## GitHub Actions Deployment
+
+This repo includes a GitHub Actions workflow at `.github/workflows/deploy-read-api.yml` to build and deploy over SSH.
+
+- Required repository secrets:
+  - `SSH_HOST`: e.g. `seojeek.com`
+  - `SSH_USER`: e.g. `alxvallejo`
+  - `SSH_KEY`: private key used by Actions to SSH to the server
+  - `SSH_PORT` (optional): e.g. `22`
+
+- Generate and install the deploy key (example):
+  1. `ssh-keygen -t ed25519 -C "github-actions@read-api" -f ~/.ssh/read_api_actions -N ''`
+  2. `ssh-copy-id -i ~/.ssh/read_api_actions.pub alxvallejo@seojeek.com`
+     - or append the `.pub` content to `/home/alxvallejo/.ssh/authorized_keys` on the server
+  3. Add the private key value to the GitHub repo secret `SSH_KEY`.
+
+- The workflow uploads a tarball to `/tmp/read-api.tar.gz`, extracts into `/var/www/read-api`, runs `npm ci --production`, and starts/restarts via PM2.

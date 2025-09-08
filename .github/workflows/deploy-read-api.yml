@@ -1,0 +1,68 @@
+name: Deploy Read API (Production)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create deployment package
+        run: |
+          tar --exclude='./node_modules' --exclude='./.git' -czf read-api.tar.gz .
+
+      - name: Copy package to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          source: "read-api.tar.gz"
+          target: "/tmp"
+
+      - name: Deploy on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+            if [ ! -d "/var/www/read-api" ]; then
+              echo "Preparing /var/www/read-api..."
+              if sudo -n true 2>/dev/null; then
+                sudo mkdir -p /var/www/read-api
+                sudo chown $USER:$USER /var/www/read-api
+              else
+                echo "Create it manually: sudo mkdir -p /var/www/read-api && sudo chown $USER:$USER /var/www/read-api"
+                exit 1
+              fi
+            fi
+            tar -xzf /tmp/read-api.tar.gz -C /var/www/read-api
+            rm -f /tmp/read-api.tar.gz
+            cd /var/www/read-api
+            npm ci --production
+            if ! command -v pm2 >/dev/null 2>&1; then
+              if sudo -n true 2>/dev/null; then sudo npm install -g pm2; else npm install -g pm2; fi
+            fi
+            if pm2 list | grep -q "read-api"; then
+              pm2 restart read-api --update-env
+            else
+              pm2 start server.js --name read-api -i 2
+            fi
+            pm2 save
+            echo "Deployment complete."

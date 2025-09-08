@@ -1,5 +1,16 @@
 const fetch = require('node-fetch');
 
+const UA = process.env.USER_AGENT || 'Reddzit/1.0';
+const REDDIT_CLIENT_ID = process.env.REDDIT_CLIENT_ID;
+const REDDIT_CLIENT_SECRET = process.env.REDDIT_CLIENT_SECRET;
+const REDDIT_REDIRECT_URI = process.env.REDDIT_REDIRECT_URI;
+
+function getBasicAuthHeader() {
+  if (!REDDIT_CLIENT_ID || !REDDIT_CLIENT_SECRET) return null;
+  const credentials = Buffer.from(`${REDDIT_CLIENT_ID}:${REDDIT_CLIENT_SECRET}`).toString('base64');
+  return `Basic ${credentials}`;
+}
+
 const redditProxy = {
   async proxyRequest(url, options = {}) {
     try {
@@ -22,7 +33,7 @@ const redditProxy = {
       const data = await redditProxy.proxyRequest('https://oauth.reddit.com/api/v1/me', {
         headers: {
           'Authorization': authHeader,
-          'User-Agent': 'Reddzit/1.0'
+          'User-Agent': UA
         }
       });
 
@@ -51,7 +62,7 @@ const redditProxy = {
       const data = await redditProxy.proxyRequest(url, {
         headers: {
           'Authorization': authHeader,
-          'User-Agent': 'Reddzit/1.0'
+          'User-Agent': UA
         }
       });
 
@@ -76,7 +87,7 @@ const redditProxy = {
         headers: {
           'Authorization': authHeader,
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'Reddzit/1.0'
+          'User-Agent': UA
         },
         body: queryString.stringify({ id })
       });
@@ -102,7 +113,7 @@ const redditProxy = {
         headers: {
           'Authorization': authHeader,
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'Reddzit/1.0'
+          'User-Agent': UA
         },
         body: queryString.stringify({ id })
       });
@@ -125,7 +136,7 @@ const redditProxy = {
       const data = await redditProxy.proxyRequest(`https://oauth.reddit.com/by_id/${fullname}`, {
         headers: {
           'Authorization': authHeader,
-          'User-Agent': 'Reddzit/1.0'
+          'User-Agent': UA
         }
       });
 
@@ -151,7 +162,7 @@ const redditProxy = {
         headers: {
           'Authorization': `Basic ${credentials}`,
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'Reddzit/1.0'
+          'User-Agent': UA
         },
         body: queryString.stringify({
           grant_type: 'authorization_code',
@@ -162,6 +173,75 @@ const redditProxy = {
 
       const data = await response.json();
       res.json(data);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+
+  async oauthToken(req, res) {
+    try {
+      const { code } = req.body || {};
+      if (!code) {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'Missing code' });
+      }
+      const authHeader = getBasicAuthHeader();
+      if (!authHeader || !REDDIT_REDIRECT_URI) {
+        return res.status(500).json({ error: 'server_config', message: 'Missing Reddit env vars' });
+      }
+
+      const params = new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: REDDIT_REDIRECT_URI,
+      });
+
+      const r = await fetch('https://www.reddit.com/api/v1/access_token', {
+        method: 'POST',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': UA,
+        },
+        body: params,
+      });
+      const text = await r.text();
+      let json;
+      try { json = JSON.parse(text); } catch (_) { json = {}; }
+      res.status(r.status).json(json);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+
+  async oauthRefresh(req, res) {
+    try {
+      const { refresh_token } = req.body || {};
+      if (!refresh_token) {
+        return res.status(400).json({ error: 'invalid_request', error_description: 'Missing refresh_token' });
+      }
+      const authHeader = getBasicAuthHeader();
+      if (!authHeader) {
+        return res.status(500).json({ error: 'server_config', message: 'Missing Reddit env vars' });
+      }
+
+      const params = new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token,
+      });
+
+      const r = await fetch('https://www.reddit.com/api/v1/access_token', {
+        method: 'POST',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': UA,
+        },
+        body: params,
+      });
+      const text = await r.text();
+      let json;
+      try { json = JSON.parse(text); } catch (_) { json = {}; }
+      res.status(r.status).json(json);
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
