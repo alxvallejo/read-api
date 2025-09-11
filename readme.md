@@ -191,6 +191,18 @@ location ~ ^/p/.*$ {
 }
 ```
 
+Canonical URL redirect (optional but recommended):
+- Redirect legacy share links like `/reddit?name=t3_abcdef` to the canonical `/p/t3_abcdef` so social bots hit the SSR path directly.
+
+```
+location = /reddit {
+  # If the query contains a valid Reddit fullname, redirect to canonical
+  if ($arg_name ~* "^t[13]_[A-Za-z0-9]+$") { return 301 /p/$arg_name; }
+  # Otherwise, serve SPA
+  try_files $uri /index.html;
+}
+```
+
 Notes:
 - The route fetches public Reddit JSON from `https://www.reddit.com/by_id/:fullname.json` (no OAuth required) and injects tags into `index.html` in memory; no files are created per post.
 - If `index.html` changes, it is reloaded automatically based on its modification time.
