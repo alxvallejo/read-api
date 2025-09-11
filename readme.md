@@ -189,6 +189,8 @@ Configure (now supports .env):
 
 Using dotenv:
 - Copy `.env.example` to `.env` and fill values. The server loads it automatically.
+  - Optional CORS: set `CORS_ORIGIN` to your frontend origin (e.g., `http://localhost:5173` in dev, `https://reddzit.seojeek.com` in prod). If unset, CORS is permissive.
+  - Local SSR test: set `FRONTEND_DIST_DIR` to your local frontend build (absolute path), e.g., `/Users/alexvallejo/Sites/personal/reddzit/reddzit-refresh/dist`, and `PUBLIC_BASE_URL=http://localhost:3000`. Build the frontend first: `cd reddzit-refresh && npm run build`.
 
 Nginx example:
 - Serve static files from `FRONTEND_DIST_DIR`.
