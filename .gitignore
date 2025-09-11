@@ -1,4 +1,7 @@
 node_modules
+.env
+.env.local
+.env.*
 
 config/cert
 read-api.log

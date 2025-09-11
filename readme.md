@@ -22,7 +22,7 @@ Define these in your server environment (PM2 ecosystem, shell profile, or deploy
 - `PORT` (optional): Defaults to `3000`.
 - `USER_AGENT` (optional): Custom UA for Reddit requests (defaults to `Reddzit/1.0`).
 
-Example (local dev):
+Example (local dev, shell export):
 
 ```
 export REDDIT_CLIENT_ID=abc123
@@ -53,6 +53,31 @@ module.exports = {
   }],
 };
 ```
+
+### Recommended: .env for local, PM2 for production
+
+This project loads a `.env` file via `dotenv` for local development, while production continues to use PM2 (or systemd) environment configuration. Precedence is: PM2/systemd env > shell env > `.env`.
+
+Local setup with `.env`:
+- Copy `.env.example` to `.env` and fill values.
+- Typical local values:
+  - `FRONTEND_DIST_DIR=/absolute/path/to/reddzit-refresh/dist`
+  - `PUBLIC_BASE_URL=http://localhost:3000`
+  - Reddit OAuth vars if you exercise those endpoints locally.
+- Start the server: `npm run dev` or `node server.js`.
+
+Production with PM2:
+- Keep envs in `ecosystem.config.js` (or set them in the shell before `pm2 start`).
+- Restart with `pm2 restart read-api --update-env` to reload env changes.
+
+Production with systemd (alternative):
+- Add envs to `/etc/systemd/system/read-api.service` using `Environment=KEY=VALUE` or `EnvironmentFile=/etc/default/read-api`.
+- Reload and restart: `sudo systemctl daemon-reload && sudo systemctl restart read-api`.
+
+Inspecting runtime envs on the server:
+- systemd unit vars: `sudo systemctl show -p Environment read-api`
+- process env (by PID): `pid=$(systemctl show -p MainPID --value read-api); sudo tr '\0' '\n' </proc/$pid/environ | sort`
+- PM2 app config: `pm2 describe read-api`
 
 ## OAuth Token Proxy (Recommendation)
 
@@ -141,3 +166,31 @@ This repo includes a GitHub Actions workflow at `.github/workflows/deploy-read-a
   3. Add the private key value to the GitHub repo secret `SSH_KEY`.
 
 - The workflow uploads a tarball to `/tmp/read-api.tar.gz`, extracts into `/var/www/read-api`, runs `npm ci --production`, and starts/restarts via PM2.
+## Share Preview SSR for Frontend
+
+This service can inject dynamic Open Graph and Twitter meta tags for the frontend’s share URLs (e.g., `/p/:fullname`) so social platforms show accurate previews.
+
+Configure (now supports .env):
+- `FRONTEND_DIST_DIR`: absolute path to the frontend build directory (e.g., `/var/www/reddzit-refresh/dist`).
+- `PUBLIC_BASE_URL`: e.g., `https://reddzit.seojeek.com` (used for absolute `og:url` and default image).
+
+Using dotenv:
+- Copy `.env.example` to `.env` and fill values. The server loads it automatically.
+
+Nginx example:
+- Serve static files from `FRONTEND_DIST_DIR`.
+- Proxy only `/p/` routes to this server (port `3000` by default):
+
+```
+location ~ ^/p/.*$ {
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_pass http://127.0.0.1:3000;
+}
+```
+
+Notes:
+- The route fetches public Reddit JSON from `https://www.reddit.com/by_id/:fullname.json` (no OAuth required) and injects tags into `index.html` in memory; no files are created per post.
+- If `index.html` changes, it is reloaded automatically based on its modification time.
