@@ -9,6 +9,80 @@ const helmet = require('helmet');
 const https = require('https');
 const app = express();
 const port = process.env.PORT || 3000;
+const nodeFetch = require('node-fetch');
+
+// Frontend SSR integration for dynamic share previews
+const FRONTEND_DIST_DIR = process.env.FRONTEND_DIST_DIR || null; // e.g. /var/www/reddzit-refresh/dist
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || '';
+let INDEX_HTML_CACHE = null;
+let INDEX_HTML_MTIME = null;
+
+async function readIndexHtml() {
+  if (!FRONTEND_DIST_DIR) return null;
+  const indexPath = path.join(FRONTEND_DIST_DIR, 'index.html');
+  try {
+    const stat = fs.statSync(indexPath);
+    const mtime = stat.mtimeMs;
+    if (!INDEX_HTML_CACHE || INDEX_HTML_MTIME !== mtime) {
+      INDEX_HTML_CACHE = fs.readFileSync(indexPath, 'utf8');
+      INDEX_HTML_MTIME = mtime;
+    }
+    return INDEX_HTML_CACHE;
+  } catch (e) {
+    console.warn('SSR: index.html not found at', indexPath);
+    return null;
+  }
+}
+
+function escapeHtml(str = '') {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function pickPreviewImage(post) {
+  try {
+    const preview = post && post.preview && post.preview.images && post.preview.images[0];
+    if (preview && preview.source && preview.source.url) {
+      return preview.source.url.replace(/&amp;/g, '&');
+    }
+  } catch (_) {}
+  const thumb = post && post.thumbnail;
+  if (thumb && /^https?:\/\//.test(thumb)) return thumb;
+  return PUBLIC_BASE_URL ? PUBLIC_BASE_URL + '/favicon.png' : '/favicon.png';
+}
+
+async function fetchRedditPublic(fullname) {
+  const endpoint = `https://www.reddit.com/by_id/${encodeURIComponent(fullname)}.json`;
+  const r = await nodeFetch(endpoint, { headers: { 'User-Agent': 'Reddzit/preview' } });
+  if (!r.ok) throw new Error('Reddit fetch failed: ' + r.status);
+  const json = await r.json();
+  const post = json && json.data && json.data.children && json.data.children[0] && json.data.children[0].data;
+  return post || null;
+}
+
+function injectMeta(html, meta) {
+  const headOpen = html.indexOf('<head>');
+  if (headOpen === -1) return html;
+  const before = html.slice(0, headOpen + '<head>'.length);
+  const after = html.slice(headOpen + '<head>'.length);
+  const tags = [
+    `<title>${escapeHtml(meta.title)}</title>`,
+    `<meta property="og:title" content="${escapeHtml(meta.ogTitle)}">`,
+    `<meta property="og:description" content="${escapeHtml(meta.ogDescription)}">`,
+    `<meta property="og:image" content="${escapeHtml(meta.ogImage)}">`,
+    `<meta property="og:url" content="${escapeHtml(meta.ogUrl)}">`,
+    `<meta name="twitter:card" content="summary_large_image">`,
+    `<meta name="twitter:title" content="${escapeHtml(meta.ogTitle)}">`,
+    `<meta name="twitter:description" content="${escapeHtml(meta.ogDescription)}">`,
+    `<meta name="twitter:image" content="${escapeHtml(meta.ogImage)}">`,
+    `<link rel="canonical" href="${escapeHtml(meta.ogUrl)}">`,
+  ].join('\n    ');
+  return `${before}\n    ${tags}\n${after}`;
+}
 
 app.use(helmet());
 // Configure CORS; default to permissive if not set
@@ -66,6 +140,42 @@ app.get('/api/reddit/user/:username/saved', redditProxy.getSaved);
 app.post('/api/reddit/unsave', redditProxy.unsave);
 app.post('/api/reddit/save', redditProxy.save);
 app.get('/api/reddit/by_id/:fullname', redditProxy.getById);
+
+// Dynamic share preview route (inject OG/Twitter tags)
+app.get('/p/:fullname', async (req, res) => {
+  try {
+    const { fullname } = req.params;
+    const indexHtml = await readIndexHtml();
+    if (!indexHtml) {
+      return res.status(500).send('SSR not configured: FRONTEND_DIST_DIR missing or index.html not found');
+    }
+
+    let post = null;
+    try {
+      post = await fetchRedditPublic(fullname);
+    } catch (e) {
+      // continue with defaults
+    }
+
+    const titleText = (post && post.title) || 'Reddzit: Review your saved Reddit posts';
+    const imageUrl = pickPreviewImage(post);
+    const ogUrl = (PUBLIC_BASE_URL || '') + req.originalUrl;
+
+    const injected = injectMeta(indexHtml, {
+      title: `Reddzit: Review your saved Reddit posts — ${titleText}`,
+      ogTitle: titleText,
+      ogDescription: post && post.selftext ? String(post.selftext).slice(0, 200) : 'Review your saved Reddit posts with Reddzit.',
+      ogImage: imageUrl,
+      ogUrl,
+    });
+
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.send(injected);
+  } catch (err) {
+    console.error('SSR route error', err);
+    res.status(500).send('Server error');
+  }
+});
 
 //var server = https.createServer(certOptions, app).listen(port, () => console.log('Alex made a thing at port ' + port))
 

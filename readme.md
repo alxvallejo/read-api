@@ -141,3 +141,28 @@ This repo includes a GitHub Actions workflow at `.github/workflows/deploy-read-a
   3. Add the private key value to the GitHub repo secret `SSH_KEY`.
 
 - The workflow uploads a tarball to `/tmp/read-api.tar.gz`, extracts into `/var/www/read-api`, runs `npm ci --production`, and starts/restarts via PM2.
+## Share Preview SSR for Frontend
+
+This service can inject dynamic Open Graph and Twitter meta tags for the frontend’s share URLs (e.g., `/p/:fullname`) so social platforms show accurate previews.
+
+Configure:
+- `FRONTEND_DIST_DIR`: absolute path to the frontend build directory (e.g., `/var/www/reddzit-refresh/dist`).
+- `PUBLIC_BASE_URL`: e.g., `https://reddzit.seojeek.com` (used for absolute `og:url` and default image).
+
+Nginx example:
+- Serve static files from `FRONTEND_DIST_DIR`.
+- Proxy only `/p/` routes to this server (port `3000` by default):
+
+```
+location ~ ^/p/.*$ {
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_pass http://127.0.0.1:3000;
+}
+```
+
+Notes:
+- The route fetches public Reddit JSON from `https://www.reddit.com/by_id/:fullname.json` (no OAuth required) and injects tags into `index.html` in memory; no files are created per post.
+- If `index.html` changes, it is reloaded automatically based on its modification time.
