@@ -96,6 +96,32 @@ if (corsOrigin) {
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
+// Startup diagnostics (non-sensitive)
+console.log('read-api startup env', {
+  hasClientId: !!process.env.REDDIT_CLIENT_ID,
+  hasClientSecret: !!process.env.REDDIT_CLIENT_SECRET,
+  redirectUri: process.env.REDDIT_REDIRECT_URI || null,
+  corsOrigin: corsOrigin || '*',
+  frontendDistDir: FRONTEND_DIST_DIR || null,
+  publicBaseUrl: PUBLIC_BASE_URL || null,
+});
+
+// Optional debug endpoint (disabled in production)
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/debug/env', (req, res) => {
+    res.json({
+      hasClientId: !!process.env.REDDIT_CLIENT_ID,
+      hasClientSecret: !!process.env.REDDIT_CLIENT_SECRET,
+      redirectUri: process.env.REDDIT_REDIRECT_URI || null,
+      corsOrigin: corsOrigin || '*',
+      frontendDistDir: FRONTEND_DIST_DIR || null,
+      publicBaseUrl: PUBLIC_BASE_URL || null,
+      nodeEnv: process.env.NODE_ENV || 'development',
+      port,
+    });
+  });
+}
+
 // var certOptions = {
 //     key: fs.readFileSync(path.resolve('./config/cert/key.pem')),
 //     cert: fs.readFileSync(path.resolve('./config/cert/cert.pem'))
