@@ -4,11 +4,24 @@ Backend API for Reddzit. Provides:
 - Content extraction (`POST /getContent`)
 - Reddit API proxy endpoints (so the frontend never talks directly to Reddit OAuth)
 
-The Node server runs behind PM2 in production. If it stops, you can restart it on the server with:
+The Node server runs behind PM2 in production. For local development it supports auto-reload via nodemon. If it stops, you can restart it on the server with:
 
 ```
 cd /var/www/read-api
 pm2 start server.js --name read-api -i 2 --update-env
+```
+
+Local development with auto-restart:
+
+```
+# install deps
+npm install
+
+# copy and configure env
+cp .env.example .env
+
+# run with auto-reload on code changes
+npm run dev
 ```
 
 ## Environment Variables
