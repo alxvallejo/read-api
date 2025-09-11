@@ -22,7 +22,7 @@ Define these in your server environment (PM2 ecosystem, shell profile, or deploy
 - `PORT` (optional): Defaults to `3000`.
 - `USER_AGENT` (optional): Custom UA for Reddit requests (defaults to `Reddzit/1.0`).
 
-Example (local dev):
+Example (local dev, shell export):
 
 ```
 export REDDIT_CLIENT_ID=abc123
@@ -53,6 +53,31 @@ module.exports = {
   }],
 };
 ```
+
+### Recommended: .env for local, PM2 for production
+
+This project loads a `.env` file via `dotenv` for local development, while production continues to use PM2 (or systemd) environment configuration. Precedence is: PM2/systemd env > shell env > `.env`.
+
+Local setup with `.env`:
+- Copy `.env.example` to `.env` and fill values.
+- Typical local values:
+  - `FRONTEND_DIST_DIR=/absolute/path/to/reddzit-refresh/dist`
+  - `PUBLIC_BASE_URL=http://localhost:3000`
+  - Reddit OAuth vars if you exercise those endpoints locally.
+- Start the server: `npm run dev` or `node server.js`.
+
+Production with PM2:
+- Keep envs in `ecosystem.config.js` (or set them in the shell before `pm2 start`).
+- Restart with `pm2 restart read-api --update-env` to reload env changes.
+
+Production with systemd (alternative):
+- Add envs to `/etc/systemd/system/read-api.service` using `Environment=KEY=VALUE` or `EnvironmentFile=/etc/default/read-api`.
+- Reload and restart: `sudo systemctl daemon-reload && sudo systemctl restart read-api`.
+
+Inspecting runtime envs on the server:
+- systemd unit vars: `sudo systemctl show -p Environment read-api`
+- process env (by PID): `pid=$(systemctl show -p MainPID --value read-api); sudo tr '\0' '\n' </proc/$pid/environ | sort`
+- PM2 app config: `pm2 describe read-api`
 
 ## OAuth Token Proxy (Recommendation)
 
