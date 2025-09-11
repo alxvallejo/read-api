@@ -14,12 +14,21 @@ function getBasicAuthHeader() {
 const redditProxy = {
   async proxyRequest(url, options = {}) {
     try {
-      const response = await fetch(url, options);
-      const data = await response.json();
-      return data;
+      const headers = {
+        'Accept': 'application/json',
+        ...(options.headers || {}),
+      };
+      const response = await fetch(url, { ...options, headers });
+      const contentType = response.headers.get('content-type') || '';
+      const text = await response.text();
+      let json = null;
+      if (contentType.includes('application/json')) {
+        try { json = JSON.parse(text); } catch (_) { /* fallthrough */ }
+      }
+      return { ok: response.ok, status: response.status, headers: Object.fromEntries(response.headers.entries()), json, text };
     } catch (error) {
       console.error('Reddit proxy error:', error);
-      throw error;
+      return { ok: false, status: 500, json: { error: 'proxy_error', message: String(error && error.message || error) } };
     }
   },
 
@@ -30,14 +39,16 @@ const redditProxy = {
         return res.status(401).json({ error: 'No authorization header' });
       }
 
-      const data = await redditProxy.proxyRequest('https://oauth.reddit.com/api/v1/me', {
+      const passAuth = authHeader.replace(/^bearer\s+/i, 'Bearer ');
+      const r = await redditProxy.proxyRequest('https://oauth.reddit.com/api/v1/me', {
         headers: {
-          'Authorization': authHeader,
-          'User-Agent': UA
+          'Authorization': passAuth,
+          'User-Agent': UA,
         }
       });
 
-      res.json(data);
+      if (r.json !== null) return res.status(r.status).json(r.json);
+      return res.status(r.status).send(r.text || '');
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -59,14 +70,15 @@ const redditProxy = {
         url += `?${params}`;
       }
 
-      const data = await redditProxy.proxyRequest(url, {
+      const passAuth = authHeader.replace(/^bearer\s+/i, 'Bearer ');
+      const r = await redditProxy.proxyRequest(url, {
         headers: {
-          'Authorization': authHeader,
-          'User-Agent': UA
+          'Authorization': passAuth,
+          'User-Agent': UA,
         }
       });
-
-      res.json(data);
+      if (r.json !== null) return res.status(r.status).json(r.json);
+      return res.status(r.status).send(r.text || '');
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -133,14 +145,15 @@ const redditProxy = {
         return res.status(401).json({ error: 'No authorization header' });
       }
 
-      const data = await redditProxy.proxyRequest(`https://oauth.reddit.com/by_id/${fullname}`, {
+      const passAuth = authHeader.replace(/^bearer\s+/i, 'Bearer ');
+      const r = await redditProxy.proxyRequest(`https://oauth.reddit.com/by_id/${fullname}`, {
         headers: {
-          'Authorization': authHeader,
-          'User-Agent': UA
+          'Authorization': passAuth,
+          'User-Agent': UA,
         }
       });
-
-      res.json(data);
+      if (r.json !== null) return res.status(r.status).json(r.json);
+      return res.status(r.status).send(r.text || '');
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
