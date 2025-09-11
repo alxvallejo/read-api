@@ -145,9 +145,12 @@ This repo includes a GitHub Actions workflow at `.github/workflows/deploy-read-a
 
 This service can inject dynamic Open Graph and Twitter meta tags for the frontend’s share URLs (e.g., `/p/:fullname`) so social platforms show accurate previews.
 
-Configure:
+Configure (now supports .env):
 - `FRONTEND_DIST_DIR`: absolute path to the frontend build directory (e.g., `/var/www/reddzit-refresh/dist`).
 - `PUBLIC_BASE_URL`: e.g., `https://reddzit.seojeek.com` (used for absolute `og:url` and default image).
+
+Using dotenv:
+- Copy `.env.example` to `.env` and fill values. The server loads it automatically.
 
 Nginx example:
 - Serve static files from `FRONTEND_DIST_DIR`.

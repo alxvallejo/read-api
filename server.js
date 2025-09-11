@@ -1,3 +1,4 @@
+require('dotenv').config();
 const read = require('./controllers/readController.js');
 const redditProxy = require('./controllers/redditProxyController.js');
 const cors = require('cors');
