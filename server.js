@@ -80,7 +80,7 @@ function injectMeta(html, meta) {
     `<meta name="twitter:title" content="${escapeHtml(meta.ogTitle)}">`,
     `<meta name="twitter:description" content="${escapeHtml(meta.ogDescription)}">`,
     `<meta name="twitter:image" content="${escapeHtml(meta.ogImage)}">`,
-    `<link rel="canonical" href="${escapeHtml(meta.ogUrl)}">`,
+    `<link rel="canonical" href="${escapeHtml(meta.canonical || meta.ogUrl)}">`,
   ].join('\n    ');
   return `${before}\n    ${tags}\n${after}`;
 }
@@ -184,19 +184,73 @@ app.get('/p/:fullname', async (req, res) => {
       // continue with defaults
     }
 
-    const titleText = (post && post.title) || 'Reddzit: Review your saved Reddit posts';
+    const isComment = !!(post && ((post.name && post.name.startsWith('t1_')) || post.body));
+    const baseTitle = isComment
+      ? `Comment by u/${post.author}${post && post.link_title ? ` on "${post.link_title}"` : ''}`
+      : (post && post.title) || 'Reddzit: Review your saved Reddit posts';
+    const description = isComment
+      ? (post && post.body ? String(post.body).slice(0, 200) : 'Review your saved Reddit posts with Reddzit.')
+      : (post && post.selftext ? String(post.selftext).slice(0, 200) : 'Review your saved Reddit posts with Reddzit.');
     const imageUrl = pickPreviewImage(post);
     const ogUrl = (PUBLIC_BASE_URL || '') + req.originalUrl;
+    const canonicalUrl = (post && post.permalink) ? `https://www.reddit.com${post.permalink}` : ogUrl;
 
     const injected = injectMeta(indexHtml, {
-      title: `Reddzit: Review your saved Reddit posts — ${titleText}`,
-      ogTitle: titleText,
-      ogDescription: post && post.selftext ? String(post.selftext).slice(0, 200) : 'Review your saved Reddit posts with Reddzit.',
+      title: `Reddzit: Review your saved Reddit posts — ${baseTitle}`,
+      ogTitle: baseTitle,
+      ogDescription: description,
       ogImage: imageUrl,
       ogUrl,
+      canonical: canonicalUrl,
     });
 
     res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=60');
+    res.send(injected);
+  } catch (err) {
+    console.error('SSR route error', err);
+    res.status(500).send('Server error');
+  }
+});
+
+// Support slugged share URLs like /p/:fullname/:slug
+app.get('/p/:fullname/:slug', async (req, res) => {
+  try {
+    const { fullname } = req.params;
+    const indexHtml = await readIndexHtml();
+    if (!indexHtml) {
+      return res.status(500).send('SSR not configured: FRONTEND_DIST_DIR missing or index.html not found');
+    }
+
+    let post = null;
+    try {
+      post = await fetchRedditPublic(fullname);
+    } catch (e) {
+      // continue with defaults
+    }
+
+    const isComment = !!(post && ((post.name && post.name.startsWith('t1_')) || post.body));
+    const baseTitle = isComment
+      ? `Comment by u/${post.author}${post && post.link_title ? ` on "${post.link_title}"` : ''}`
+      : (post && post.title) || 'Reddzit: Review your saved Reddit posts';
+    const description = isComment
+      ? (post && post.body ? String(post.body).slice(0, 200) : 'Review your saved Reddit posts with Reddzit.')
+      : (post && post.selftext ? String(post.selftext).slice(0, 200) : 'Review your saved Reddit posts with Reddzit.');
+    const imageUrl = pickPreviewImage(post);
+    const ogUrl = (PUBLIC_BASE_URL || '') + req.originalUrl;
+    const canonicalUrl = (post && post.permalink) ? `https://www.reddit.com${post.permalink}` : ogUrl;
+
+    const injected = injectMeta(indexHtml, {
+      title: `Reddzit: Review your saved Reddit posts — ${baseTitle}`,
+      ogTitle: baseTitle,
+      ogDescription: description,
+      ogImage: imageUrl,
+      ogUrl,
+      canonical: canonicalUrl,
+    });
+
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=60');
     res.send(injected);
   } catch (err) {
     console.error('SSR route error', err);

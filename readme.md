@@ -34,6 +34,13 @@ Define these in your server environment (PM2 ecosystem, shell profile, or deploy
 - `CORS_ORIGIN` (optional but recommended): Allowed browser origin, e.g., `https://reddzit.seojeek.com` (defaults to `*` if not set).
 - `PORT` (optional): Defaults to `3000`.
 - `USER_AGENT` (optional): Custom UA for Reddit requests (defaults to `Reddzit/1.0`).
+// SSR for frontend share previews
+- `FRONTEND_DIST_DIR` (optional for SSR): Absolute path to the frontend build directory that contains `index.html` and `assets/`.
+  - Prod example: `/var/www/reddzit-refresh/dist`
+  - Local example: `/Users/<you>/Sites/personal/reddzit/reddzit-refresh/dist`
+- `PUBLIC_BASE_URL` (optional for SSR): Public origin used to generate absolute `og:url` and fallback image URLs.
+  - Prod example: `https://reddzit.seojeek.com`
+  - Local example: `http://localhost:3000`
 
 Example (local dev, shell export):
 
