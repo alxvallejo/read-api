@@ -4,11 +4,24 @@ Backend API for Reddzit. Provides:
 - Content extraction (`POST /getContent`)
 - Reddit API proxy endpoints (so the frontend never talks directly to Reddit OAuth)
 
-The Node server runs behind PM2 in production. If it stops, you can restart it on the server with:
+The Node server runs behind PM2 in production. For local development it supports auto-reload via nodemon. If it stops, you can restart it on the server with:
 
 ```
 cd /var/www/read-api
 pm2 start server.js --name read-api -i 2 --update-env
+```
+
+Local development with auto-restart:
+
+```
+# install deps
+npm install
+
+# copy and configure env
+cp .env.example .env
+
+# run with auto-reload on code changes
+npm run dev
 ```
 
 ## Environment Variables
@@ -21,6 +34,13 @@ Define these in your server environment (PM2 ecosystem, shell profile, or deploy
 - `CORS_ORIGIN` (optional but recommended): Allowed browser origin, e.g., `https://reddzit.seojeek.com` (defaults to `*` if not set).
 - `PORT` (optional): Defaults to `3000`.
 - `USER_AGENT` (optional): Custom UA for Reddit requests (defaults to `Reddzit/1.0`).
+// SSR for frontend share previews
+- `FRONTEND_DIST_DIR` (optional for SSR): Absolute path to the frontend build directory that contains `index.html` and `assets/`.
+  - Prod example: `/var/www/reddzit-refresh/dist`
+  - Local example: `/Users/<you>/Sites/personal/reddzit/reddzit-refresh/dist`
+- `PUBLIC_BASE_URL` (optional for SSR): Public origin used to generate absolute `og:url` and fallback image URLs.
+  - Prod example: `https://reddzit.seojeek.com`
+  - Local example: `http://localhost:3000`
 
 Example (local dev, shell export):
 
@@ -176,6 +196,8 @@ Configure (now supports .env):
 
 Using dotenv:
 - Copy `.env.example` to `.env` and fill values. The server loads it automatically.
+  - Optional CORS: set `CORS_ORIGIN` to your frontend origin (e.g., `http://localhost:5173` in dev, `https://reddzit.seojeek.com` in prod). If unset, CORS is permissive.
+  - Local SSR test: set `FRONTEND_DIST_DIR` to your local frontend build (absolute path), e.g., `/Users/alexvallejo/Sites/personal/reddzit/reddzit-refresh/dist`, and `PUBLIC_BASE_URL=http://localhost:3000`. Build the frontend first: `cd reddzit-refresh && npm run build`.
 
 Nginx example:
 - Serve static files from `FRONTEND_DIST_DIR`.
@@ -188,6 +210,18 @@ location ~ ^/p/.*$ {
   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
   proxy_set_header X-Forwarded-Proto $scheme;
   proxy_pass http://127.0.0.1:3000;
+}
+```
+
+Canonical URL redirect (optional but recommended):
+- Redirect legacy share links like `/reddit?name=t3_abcdef` to the canonical `/p/t3_abcdef` so social bots hit the SSR path directly.
+
+```
+location = /reddit {
+  # If the query contains a valid Reddit fullname, redirect to canonical
+  if ($arg_name ~* "^t[13]_[A-Za-z0-9]+$") { return 301 /p/$arg_name; }
+  # Otherwise, serve SPA
+  try_files $uri /index.html;
 }
 ```
 

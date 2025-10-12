@@ -15,7 +15,7 @@ const redditProxy = {
   async proxyRequest(url, options = {}) {
     try {
       const headers = {
-        'Accept': 'application/json',
+        Accept: 'application/json',
         ...(options.headers || {}),
       };
       const response = await fetch(url, { ...options, headers });
@@ -23,7 +23,11 @@ const redditProxy = {
       const text = await response.text();
       let json = null;
       if (contentType.includes('application/json')) {
-        try { json = JSON.parse(text); } catch (_) { /* fallthrough */ }
+        try {
+          json = JSON.parse(text);
+        } catch (_) {
+          json = null;
+        }
       }
       return { ok: response.ok, status: response.status, headers: Object.fromEntries(response.headers.entries()), json, text };
     } catch (error) {
@@ -42,11 +46,10 @@ const redditProxy = {
       const passAuth = authHeader.replace(/^bearer\s+/i, 'Bearer ');
       const r = await redditProxy.proxyRequest('https://oauth.reddit.com/api/v1/me', {
         headers: {
-          'Authorization': passAuth,
+          Authorization: passAuth,
           'User-Agent': UA,
-        }
+        },
       });
-
       if (r.json !== null) return res.status(r.status).json(r.json);
       return res.status(r.status).send(r.text || '');
     } catch (error) {
@@ -73,9 +76,9 @@ const redditProxy = {
       const passAuth = authHeader.replace(/^bearer\s+/i, 'Bearer ');
       const r = await redditProxy.proxyRequest(url, {
         headers: {
-          'Authorization': passAuth,
+          Authorization: passAuth,
           'User-Agent': UA,
-        }
+        },
       });
       if (r.json !== null) return res.status(r.status).json(r.json);
       return res.status(r.status).send(r.text || '');
@@ -148,9 +151,9 @@ const redditProxy = {
       const passAuth = authHeader.replace(/^bearer\s+/i, 'Bearer ');
       const r = await redditProxy.proxyRequest(`https://oauth.reddit.com/by_id/${fullname}`, {
         headers: {
-          'Authorization': passAuth,
+          Authorization: passAuth,
           'User-Agent': UA,
-        }
+        },
       });
       if (r.json !== null) return res.status(r.status).json(r.json);
       return res.status(r.status).send(r.text || '');
@@ -194,11 +197,17 @@ const redditProxy = {
   async oauthToken(req, res) {
     try {
       const { code } = req.body || {};
+      console.log('oauthToken request', { hasCode: !!code, redirectUri: REDDIT_REDIRECT_URI || null });
       if (!code) {
         return res.status(400).json({ error: 'invalid_request', error_description: 'Missing code' });
       }
       const authHeader = getBasicAuthHeader();
       if (!authHeader || !REDDIT_REDIRECT_URI) {
+        console.error('oauthToken server_config', {
+          hasClientId: !!REDDIT_CLIENT_ID,
+          hasClientSecret: !!REDDIT_CLIENT_SECRET,
+          hasRedirect: !!REDDIT_REDIRECT_URI,
+        });
         return res.status(500).json({ error: 'server_config', message: 'Missing Reddit env vars' });
       }
 
@@ -219,9 +228,14 @@ const redditProxy = {
       });
       const text = await r.text();
       let json;
-      try { json = JSON.parse(text); } catch (_) { json = {}; }
-      res.status(r.status).json(json);
+      try { json = JSON.parse(text); } catch (_) { json = null; }
+      if (!r.ok) {
+        console.error('oauthToken upstream error', { status: r.status, text: text.slice(0, 200) });
+      }
+      if (json !== null) return res.status(r.status).json(json);
+      res.status(r.status).send(text);
     } catch (error) {
+      console.error('oauthToken exception', error);
       res.status(500).json({ error: error.message });
     }
   },
@@ -229,6 +243,7 @@ const redditProxy = {
   async oauthRefresh(req, res) {
     try {
       const { refresh_token } = req.body || {};
+      console.log('oauthRefresh request', { hasRefreshToken: !!refresh_token });
       if (!refresh_token) {
         return res.status(400).json({ error: 'invalid_request', error_description: 'Missing refresh_token' });
       }
@@ -253,9 +268,14 @@ const redditProxy = {
       });
       const text = await r.text();
       let json;
-      try { json = JSON.parse(text); } catch (_) { json = {}; }
-      res.status(r.status).json(json);
+      try { json = JSON.parse(text); } catch (_) { json = null; }
+      if (!r.ok) {
+        console.error('oauthRefresh upstream error', { status: r.status, text: text.slice(0, 200) });
+      }
+      if (json !== null) return res.status(r.status).json(json);
+      res.status(r.status).send(text);
     } catch (error) {
+      console.error('oauthRefresh exception', error);
       res.status(500).json({ error: error.message });
     }
   }
