@@ -62,7 +62,19 @@ function pickPreviewImage(post) {
 async function fetchRedditPublic(fullname) {
   const endpoint = `https://www.reddit.com/by_id/${encodeURIComponent(fullname)}.json`;
   console.log('SSR: Fetching Reddit data from:', endpoint);
-  const r = await nodeFetch(endpoint, { headers: { 'User-Agent': UA } });
+  // Try Reddit-friendly User-Agent that includes username (Reddit prefers this format)
+  const redditUA = 'web:reddzit:v1.0.0 (by /u/no_spoon)';
+  const headers = {
+    'User-Agent': redditUA,
+    'Accept': 'application/json',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'DNT': '1',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1'
+  };
+  console.log('SSR: Using headers:', JSON.stringify(headers, null, 2));
+  const r = await nodeFetch(endpoint, { headers });
   console.log('SSR: Reddit API response status:', r.status, r.ok ? 'OK' : 'FAILED');
   if (!r.ok) throw new Error('Reddit fetch failed: ' + r.status);
   const json = await r.json();
