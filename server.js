@@ -58,10 +58,13 @@ function pickPreviewImage(post) {
 
 async function fetchRedditPublic(fullname) {
   const endpoint = `https://www.reddit.com/by_id/${encodeURIComponent(fullname)}.json`;
+  console.log('SSR: Fetching Reddit data from:', endpoint);
   const r = await nodeFetch(endpoint, { headers: { 'User-Agent': 'Reddzit/preview' } });
+  console.log('SSR: Reddit API response status:', r.status, r.ok ? 'OK' : 'FAILED');
   if (!r.ok) throw new Error('Reddit fetch failed: ' + r.status);
   const json = await r.json();
   const post = json && json.data && json.data.children && json.data.children[0] && json.data.children[0].data;
+  console.log('SSR: Parsed post data:', post ? `Found post: "${post.title?.slice(0, 50)}..."` : 'No post data found');
   return post || null;
 }
 
@@ -180,7 +183,9 @@ app.get('/p/:fullname', async (req, res) => {
     let post = null;
     try {
       post = await fetchRedditPublic(fullname);
+      console.log('SSR: Successfully fetched post data for', fullname, post ? 'SUCCESS' : 'NO_DATA');
     } catch (e) {
+      console.error('SSR: Failed to fetch Reddit post data for', fullname, e.message || e);
       // continue with defaults
     }
 
@@ -225,7 +230,9 @@ app.get('/p/:fullname/:slug', async (req, res) => {
     let post = null;
     try {
       post = await fetchRedditPublic(fullname);
+      console.log('SSR: Successfully fetched post data for', fullname, post ? 'SUCCESS' : 'NO_DATA');
     } catch (e) {
+      console.error('SSR: Failed to fetch Reddit post data for', fullname, e.message || e);
       // continue with defaults
     }
 
