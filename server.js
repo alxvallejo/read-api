@@ -12,6 +12,9 @@ const app = express();
 const port = process.env.PORT || 3000;
 const nodeFetch = require('node-fetch');
 
+// Use the same User-Agent as other Reddit API calls
+const UA = process.env.USER_AGENT || 'Reddzit/1.0';
+
 // Frontend SSR integration for dynamic share previews
 const FRONTEND_DIST_DIR = process.env.FRONTEND_DIST_DIR || null; // e.g. /var/www/reddzit-refresh/dist
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || '';
@@ -59,7 +62,7 @@ function pickPreviewImage(post) {
 async function fetchRedditPublic(fullname) {
   const endpoint = `https://www.reddit.com/by_id/${encodeURIComponent(fullname)}.json`;
   console.log('SSR: Fetching Reddit data from:', endpoint);
-  const r = await nodeFetch(endpoint, { headers: { 'User-Agent': 'Reddzit/preview' } });
+  const r = await nodeFetch(endpoint, { headers: { 'User-Agent': UA } });
   console.log('SSR: Reddit API response status:', r.status, r.ok ? 'OK' : 'FAILED');
   if (!r.ok) throw new Error('Reddit fetch failed: ' + r.status);
   const json = await r.json();
