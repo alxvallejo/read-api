@@ -60,27 +60,47 @@ function pickPreviewImage(post) {
 }
 
 async function fetchRedditPublic(fullname) {
-  const endpoint = `https://www.reddit.com/by_id/${encodeURIComponent(fullname)}.json`;
-  console.log('SSR: Fetching Reddit data from:', endpoint);
-  // Try Reddit-friendly User-Agent that includes username (Reddit prefers this format)
-  const redditUA = 'web:reddzit:v1.0.0 (by /u/no_spoon)';
-  const headers = {
-    'User-Agent': redditUA,
-    'Accept': 'application/json',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'DNT': '1',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1'
-  };
-  console.log('SSR: Using headers:', JSON.stringify(headers, null, 2));
-  const r = await nodeFetch(endpoint, { headers });
-  console.log('SSR: Reddit API response status:', r.status, r.ok ? 'OK' : 'FAILED');
-  if (!r.ok) throw new Error('Reddit fetch failed: ' + r.status);
-  const json = await r.json();
-  const post = json && json.data && json.data.children && json.data.children[0] && json.data.children[0].data;
-  console.log('SSR: Parsed post data:', post ? `Found post: "${post.title?.slice(0, 50)}..."` : 'No post data found');
-  return post || null;
+  // Convert post ID to Reddit URL and scrape directly
+  const postId = fullname.replace('t3_', ''); // Remove the t3_ prefix
+  const redditUrl = `https://www.reddit.com/r/all/comments/${postId}/`;
+  console.log('SSR: Scraping Reddit post directly:', redditUrl);
+  
+  return new Promise((resolve, reject) => {
+    const nodeReadability = require('node-readability');
+    
+    nodeReadability(redditUrl, {
+      headers: {
+        'User-Agent': 'web:reddzit:v1.0.0 (by /u/no_spoon)', // Use same UA as readController
+      },
+    }, (err, article, meta) => {
+      if (err) {
+        console.error('SSR: node-readability error:', err);
+        return reject(err);
+      }
+      
+      if (!article) {
+        console.log('SSR: No article extracted from Reddit post');
+        return resolve(null);
+      }
+      
+      console.log('SSR: Article extracted! Title:', article.title || 'NO_TITLE');
+      console.log('SSR: Article content length:', article.content ? article.content.length : 0);
+      console.log('SSR: Article content preview:', article.content ? article.content.slice(0, 200) + '...' : 'NO_CONTENT');
+      
+      // Convert to expected format
+      const post = {
+        title: article.title || 'Reddit Post',
+        selftext: article.content ? article.content.replace(/<[^>]*>/g, '').slice(0, 500) : '', // Strip HTML for description
+        author: 'reddit user', // node-readability doesn't extract Reddit-specific metadata
+        subreddit: 'unknown',
+        name: fullname,
+        permalink: `/r/all/comments/${postId}/`
+      };
+      
+      article.close(); // Clean up resources
+      resolve(post);
+    });
+  });
 }
 
 function injectMeta(html, meta) {
@@ -190,6 +210,8 @@ app.get('/api/reddit/by_id/:fullname', redditProxy.getById);
 app.get('/p/:fullname', async (req, res) => {
   try {
     const { fullname } = req.params;
+    console.log('SSR: Processing request for fullname:', fullname);
+    console.log('SSR: Full request URL:', req.originalUrl);
     const indexHtml = await readIndexHtml();
     if (!indexHtml) {
       return res.status(500).send('SSR not configured: FRONTEND_DIST_DIR missing or index.html not found');
@@ -237,6 +259,8 @@ app.get('/p/:fullname', async (req, res) => {
 app.get('/p/:fullname/:slug', async (req, res) => {
   try {
     const { fullname } = req.params;
+    console.log('SSR: Processing slugged request for fullname:', fullname);
+    console.log('SSR: Full slugged request URL:', req.originalUrl);
     const indexHtml = await readIndexHtml();
     if (!indexHtml) {
       return res.status(500).send('SSR not configured: FRONTEND_DIST_DIR missing or index.html not found');
