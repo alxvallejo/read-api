@@ -60,45 +60,66 @@ function pickPreviewImage(post) {
 }
 
 async function fetchRedditPublic(fullname) {
-  // Convert post ID to Reddit URL and scrape directly
+  // Use Reddit's JSON API for reliable data extraction
   const postId = fullname.replace('t3_', ''); // Remove the t3_ prefix
-  const redditUrl = `https://www.reddit.com/r/all/comments/${postId}/`;
-  console.log('SSR: Scraping Reddit post directly:', redditUrl);
+  const jsonUrl = `https://www.reddit.com/comments/${postId}/.json`;
+  console.log('SSR: Fetching Reddit post JSON:', jsonUrl);
   
   return new Promise((resolve, reject) => {
-    const nodeReadability = require('node-readability');
+    const https = require('https');
     
-    nodeReadability(redditUrl, {
+    const req = https.get(jsonUrl, {
       headers: {
-        'User-Agent': 'web:reddzit:v1.0.0 (by /u/no_spoon)', // Use same UA as readController
-      },
-    }, (err, article, meta) => {
-      if (err) {
-        console.error('SSR: node-readability error:', err);
-        return reject(err);
+        'User-Agent': 'web:reddzit:v1.0.0 (by /u/no_spoon)',
       }
-      
-      if (!article) {
-        console.log('SSR: No article extracted from Reddit post');
-        return resolve(null);
-      }
-      
-      console.log('SSR: Article extracted! Title:', article.title || 'NO_TITLE');
-      console.log('SSR: Article content length:', article.content ? article.content.length : 0);
-      console.log('SSR: Article content preview:', article.content ? article.content.slice(0, 200) + '...' : 'NO_CONTENT');
-      
-      // Convert to expected format
-      const post = {
-        title: article.title || 'Reddit Post',
-        selftext: article.content ? article.content.replace(/<[^>]*>/g, '').slice(0, 500) : '', // Strip HTML for description
-        author: 'reddit user', // node-readability doesn't extract Reddit-specific metadata
-        subreddit: 'unknown',
-        name: fullname,
-        permalink: `/r/all/comments/${postId}/`
-      };
-      
-      article.close(); // Clean up resources
-      resolve(post);
+    }, (res) => {
+      let jsonData = '';
+      res.on('data', (chunk) => jsonData += chunk);
+      res.on('end', () => {
+        try {
+          console.log('SSR: Received JSON, length:', jsonData.length);
+          const parsed = JSON.parse(jsonData);
+          
+          // Reddit JSON structure: [post_data, comments_data]
+          const postData = parsed[0]?.data?.children?.[0]?.data;
+          if (!postData) {
+            console.log('SSR: No post data found in JSON response');
+            return resolve(null);
+          }
+          
+          const title = postData.title;
+          const description = postData.selftext || '';
+          const author = postData.author;
+          const subreddit = postData.subreddit;
+          const permalink = postData.permalink;
+          
+          console.log('SSR: Extracted from JSON API:', {
+            title: title?.slice(0, 50) + '...',
+            author,
+            subreddit,
+            hasDescription: !!description
+          });
+          
+          const post = {
+            title: title || 'Reddit Post',
+            selftext: description,
+            author: author || 'reddit user',
+            subreddit: subreddit || 'unknown',
+            name: fullname,
+            permalink: permalink || `/comments/${postId}/`
+          };
+          
+          resolve(post);
+        } catch (parseErr) {
+          console.error('SSR: JSON parsing error:', parseErr);
+          resolve(null);
+        }
+      });
+    });
+    
+    req.on('error', (err) => {
+      console.error('SSR: HTTPS request error:', err);
+      reject(err);
     });
   });
 }
