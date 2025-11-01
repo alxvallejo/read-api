@@ -15,6 +15,53 @@ const nodeFetch = require('node-fetch');
 // Use the same User-Agent as other Reddit API calls
 const UA = process.env.USER_AGENT || 'Reddzit/1.0';
 
+// App-only OAuth token cache for SSR
+let APP_TOKEN = null;
+let APP_TOKEN_EXPIRES = 0;
+
+async function getAppOnlyToken() {
+  // Return cached token if still valid
+  if (APP_TOKEN && Date.now() < APP_TOKEN_EXPIRES) {
+    return APP_TOKEN;
+  }
+  
+  const clientId = process.env.REDDIT_CLIENT_ID;
+  const clientSecret = process.env.REDDIT_CLIENT_SECRET;
+  
+  if (!clientId || !clientSecret) {
+    console.warn('SSR: Reddit OAuth credentials not configured');
+    return null;
+  }
+  
+  try {
+    const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+    const response = await nodeFetch('https://www.reddit.com/api/v1/access_token', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${credentials}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': UA
+      },
+      body: 'grant_type=client_credentials'
+    });
+    
+    if (!response.ok) {
+      console.error('SSR: Failed to get app token, status:', response.status);
+      return null;
+    }
+    
+    const data = await response.json();
+    APP_TOKEN = data.access_token;
+    // Expire 5 minutes before actual expiry for safety
+    APP_TOKEN_EXPIRES = Date.now() + (data.expires_in - 300) * 1000;
+    console.log('SSR: Obtained new app-only OAuth token');
+    return APP_TOKEN;
+  } catch (err) {
+    console.error('SSR: Error getting app token:', err.message);
+    return null;
+  }
+}
+
 // Frontend SSR integration for dynamic share previews
 const FRONTEND_DIST_DIR = process.env.FRONTEND_DIST_DIR || null; // e.g. /var/www/reddzit-refresh/dist
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || '';
@@ -60,15 +107,63 @@ function pickPreviewImage(post) {
 }
 
 async function fetchRedditPublic(fullname) {
-  // Use Reddit's JSON API for reliable data extraction
-  const postId = fullname.replace('t3_', ''); // Remove the t3_ prefix
-  const jsonUrl = `https://www.reddit.com/comments/${postId}/.json`;
-  console.log('SSR: Fetching Reddit post JSON:', jsonUrl);
+  // Use Reddit's OAuth API with app-only credentials for reliable, unblocked access
+  const token = await getAppOnlyToken();
+  
+  if (!token) {
+    console.warn('SSR: No OAuth token available, falling back to public API');
+    // Fallback to public API without auth
+    const postId = fullname.replace('t3_', '');
+    const jsonUrl = `https://www.reddit.com/comments/${postId}/.json`;
+    console.log('SSR: Fetching Reddit post JSON (public):', jsonUrl);
+    
+    try {
+      const response = await nodeFetch(jsonUrl, {
+        headers: {
+          'User-Agent': UA,
+        },
+        redirect: 'follow'
+      });
+      
+      if (!response.ok) {
+        console.error('SSR: Public API returned status:', response.status);
+        return null;
+      }
+      
+      const text = await response.text();
+      console.log('SSR: Received response, length:', text.length);
+      const parsed = JSON.parse(text);
+      const postData = parsed[0]?.data?.children?.[0]?.data;
+      
+      if (!postData) {
+        console.log('SSR: No post data found in JSON response');
+        return null;
+      }
+      
+      return {
+        title: postData.title || 'Reddit Post',
+        selftext: postData.selftext || '',
+        author: postData.author || 'reddit user',
+        subreddit: postData.subreddit || 'unknown',
+        name: fullname,
+        permalink: postData.permalink || `/comments/${postData.id}/`,
+        preview: postData.preview
+      };
+    } catch (err) {
+      console.error('SSR: Public API error:', err.message);
+      return null;
+    }
+  }
+  
+  // Use authenticated OAuth endpoint
+  const apiUrl = `https://oauth.reddit.com/by_id/${fullname}`;
+  console.log('SSR: Fetching via OAuth API:', apiUrl);
   
   try {
-    const response = await nodeFetch(jsonUrl, {
+    const response = await nodeFetch(apiUrl, {
       headers: {
-        'User-Agent': 'web:reddzit:v1.0.0 (by /u/no_spoon)',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': UA,
       },
       redirect: 'follow'
     });
@@ -109,7 +204,7 @@ async function fetchRedditPublic(fullname) {
       author: author || 'reddit user',
       subreddit: subreddit || 'unknown',
       name: fullname,
-      permalink: permalink || `/comments/${postId}/`,
+      permalink: permalink || `/comments/${postData.id}/`,
       preview: postData.preview // Include preview for image extraction
     };
     
