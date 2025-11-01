@@ -156,7 +156,7 @@ async function fetchRedditPublic(fullname) {
   }
   
   // Use authenticated OAuth endpoint
-  const apiUrl = `https://oauth.reddit.com/by_id/${fullname}`;
+  const apiUrl = `https://oauth.reddit.com/by_id/${fullname}.json`;
   console.log('SSR: Fetching via OAuth API:', apiUrl);
   
   try {
