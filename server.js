@@ -178,8 +178,8 @@ async function fetchRedditPublic(fullname) {
     
     const parsed = JSON.parse(text);
     
-    // Reddit JSON structure: [post_data, comments_data]
-    const postData = parsed[0]?.data?.children?.[0]?.data;
+    // OAuth /by_id/ returns: {kind: "Listing", data: {children: [{kind: "t3", data: {...}}]}}
+    const postData = parsed?.data?.children?.[0]?.data;
     if (!postData) {
       console.log('SSR: No post data found in JSON response');
       return null;
