@@ -65,63 +65,59 @@ async function fetchRedditPublic(fullname) {
   const jsonUrl = `https://www.reddit.com/comments/${postId}/.json`;
   console.log('SSR: Fetching Reddit post JSON:', jsonUrl);
   
-  return new Promise((resolve, reject) => {
-    const https = require('https');
-    
-    const req = https.get(jsonUrl, {
+  try {
+    const response = await nodeFetch(jsonUrl, {
       headers: {
         'User-Agent': 'web:reddzit:v1.0.0 (by /u/no_spoon)',
-      }
-    }, (res) => {
-      let jsonData = '';
-      res.on('data', (chunk) => jsonData += chunk);
-      res.on('end', () => {
-        try {
-          console.log('SSR: Received JSON, length:', jsonData.length);
-          const parsed = JSON.parse(jsonData);
-          
-          // Reddit JSON structure: [post_data, comments_data]
-          const postData = parsed[0]?.data?.children?.[0]?.data;
-          if (!postData) {
-            console.log('SSR: No post data found in JSON response');
-            return resolve(null);
-          }
-          
-          const title = postData.title;
-          const description = postData.selftext || '';
-          const author = postData.author;
-          const subreddit = postData.subreddit;
-          const permalink = postData.permalink;
-          
-          console.log('SSR: Extracted from JSON API:', {
-            title: title?.slice(0, 50) + '...',
-            author,
-            subreddit,
-            hasDescription: !!description
-          });
-          
-          const post = {
-            title: title || 'Reddit Post',
-            selftext: description,
-            author: author || 'reddit user',
-            subreddit: subreddit || 'unknown',
-            name: fullname,
-            permalink: permalink || `/comments/${postId}/`
-          };
-          
-          resolve(post);
-        } catch (parseErr) {
-          console.error('SSR: JSON parsing error:', parseErr);
-          resolve(null);
-        }
-      });
+      },
+      redirect: 'follow'
     });
     
-    req.on('error', (err) => {
-      console.error('SSR: HTTPS request error:', err);
-      reject(err);
+    if (!response.ok) {
+      console.error('SSR: Reddit API returned status:', response.status);
+      return null;
+    }
+    
+    const text = await response.text();
+    console.log('SSR: Received response, length:', text.length);
+    
+    const parsed = JSON.parse(text);
+    
+    // Reddit JSON structure: [post_data, comments_data]
+    const postData = parsed[0]?.data?.children?.[0]?.data;
+    if (!postData) {
+      console.log('SSR: No post data found in JSON response');
+      return null;
+    }
+    
+    const title = postData.title;
+    const description = postData.selftext || '';
+    const author = postData.author;
+    const subreddit = postData.subreddit;
+    const permalink = postData.permalink;
+    
+    console.log('SSR: Extracted from JSON API:', {
+      title: title?.slice(0, 50) + '...',
+      author,
+      subreddit,
+      hasDescription: !!description
     });
-  });
+    
+    const post = {
+      title: title || 'Reddit Post',
+      selftext: description,
+      author: author || 'reddit user',
+      subreddit: subreddit || 'unknown',
+      name: fullname,
+      permalink: permalink || `/comments/${postId}/`,
+      preview: postData.preview // Include preview for image extraction
+    };
+    
+    return post;
+  } catch (err) {
+    console.error('SSR: Failed to fetch Reddit data:', err.message);
+    return null;
+  }
 }
 
 function injectMeta(html, meta) {
