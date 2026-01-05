@@ -162,6 +162,36 @@ const redditProxy = {
     }
   },
 
+  // Public endpoint for fetching post data without auth (for shared links)
+  async getByIdPublic(req, res) {
+    try {
+      const { fullname } = req.params;
+      
+      // Validate fullname format (t3_ for posts, t1_ for comments)
+      if (!fullname || !/^t[13]_[a-z0-9]+$/i.test(fullname)) {
+        return res.status(400).json({ error: 'Invalid fullname format' });
+      }
+
+      const isComment = fullname.startsWith('t1_');
+      let url;
+      if (isComment) {
+        url = `https://www.reddit.com/api/info.json?id=${encodeURIComponent(fullname)}`;
+      } else {
+        url = `https://www.reddit.com/by_id/${encodeURIComponent(fullname)}.json`;
+      }
+
+      const r = await redditProxy.proxyRequest(url, {
+        headers: {
+          'User-Agent': UA,
+        }
+      });
+      if (r.json !== null) return res.status(r.status).json(r.json);
+      return res.status(r.status).send(r.text || '');
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+
   async getAccessToken(req, res) {
     try {
       const { code, redirect_uri, client_id, client_secret } = req.body;

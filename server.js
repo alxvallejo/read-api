@@ -167,6 +167,8 @@ app.get('/api/reddit/user/:username/saved', redditProxy.getSaved);
 app.post('/api/reddit/unsave', redditProxy.unsave);
 app.post('/api/reddit/save', redditProxy.save);
 app.get('/api/reddit/by_id/:fullname', redditProxy.getById);
+// Public endpoint for fetching post data without auth (for shared links)
+app.get('/api/reddit/public/by_id/:fullname', redditProxy.getByIdPublic);
 
 // Dynamic share preview route (inject OG/Twitter tags)
 app.get('/p/:fullname', async (req, res) => {
