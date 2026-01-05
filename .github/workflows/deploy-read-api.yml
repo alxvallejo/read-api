@@ -55,6 +55,9 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             set -e
+            # Source nvm for non-interactive SSH sessions
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
             if [ ! -d "/var/www/read-api" ]; then
               echo "Preparing /var/www/read-api..."
               if sudo -n true 2>/dev/null; then
