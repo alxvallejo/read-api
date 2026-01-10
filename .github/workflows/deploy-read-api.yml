@@ -15,7 +15,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 22
           cache: 'npm'
 
       - name: Install production dependencies
@@ -58,6 +58,9 @@ jobs:
             # Source nvm for non-interactive SSH sessions
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            # Use Node 22 (required by Prisma 7.x)
+            nvm install 22 2>/dev/null || true
+            nvm use 22
             if [ ! -d "/var/www/read-api" ]; then
               echo "Preparing /var/www/read-api..."
               if sudo -n true 2>/dev/null; then
