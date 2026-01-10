@@ -84,8 +84,9 @@ jobs:
             
             # Extract DATABASE_URL from PM2 env for Prisma
             if "$PM2" list | grep -q "read-api"; then
-              export DATABASE_URL=$("$PM2" env 0 | grep DATABASE_URL | cut -d'=' -f2-)
+              export DATABASE_URL=$("$PM2" env 0 | grep '^DATABASE_URL:' | sed 's/^DATABASE_URL: *//')
             fi
+            echo "DATABASE_URL is set: ${DATABASE_URL:+yes}"
             
             # Prisma: Generate and Migrate
             ./node_modules/.bin/prisma generate
