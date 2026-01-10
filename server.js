@@ -156,6 +156,14 @@ app.post('/getContent', (req, res) => {
   // }
 });
 
+const dailyController = require('./controllers/dailyController.js');
+
+// Daily Pulse API
+app.get('/api/daily/latest', dailyController.getLatestReport);
+app.get('/api/daily/:date', dailyController.getReportByDate);
+app.post('/api/subscribe', dailyController.subscribe);
+app.post('/api/engagement', dailyController.trackEngagement);
+
 // Reddit API proxy endpoints
 // New OAuth token/refresh endpoints using server env vars
 app.post('/api/reddit/oauth/token', redditProxy.oauthToken);

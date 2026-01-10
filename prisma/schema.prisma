@@ -1,0 +1,169 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model DailyReport {
+  id              String         @id @default(uuid())
+  reportDate      DateTime       @unique @map("report_date") @db.Date
+  status          ReportStatus   @default(DRAFT)
+  title           String?
+  summary         String?
+  generatedAt     DateTime       @map("generated_at")
+  publishedAt     DateTime?      @map("published_at")
+  sourceTimezone  String         @map("source_timezone")
+  llmModel        String?        @map("llm_model")
+  llmCostCents    Int?           @map("llm_cost_cents")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  stories         ReportStory[]
+
+  @@map("daily_reports")
+}
+
+enum ReportStatus {
+  DRAFT
+  PUBLISHED
+  FAILED
+}
+
+model ReportStory {
+  id              String         @id @default(uuid())
+  reportId        String         @map("report_id")
+  rank            Int
+  
+  // Reddit Source Fields
+  subreddit       String
+  redditPostId    String         @map("reddit_post_id")
+  redditPermalink String         @map("reddit_permalink")
+  title           String
+  postUrl         String?        @map("post_url")
+  author          String?
+  score           Int            @default(0)
+  numComments     Int            @default(0) @map("num_comments")
+  createdUtc      DateTime?      @map("created_utc")
+  
+  // Metadata
+  selectionScore  Decimal        @default(0) @map("selection_score")
+  
+  // LLM Outputs
+  summary         String?
+  sentimentLabel  String?        @map("sentiment_label") // Can be enum if strictly limited
+  takeaways       Json?
+  topicTags       Json?          @map("topic_tags")
+  
+  // Moderation
+  contentWarning  String?        @map("content_warning")
+  isHidden        Boolean        @default(false) @map("is_hidden")
+  
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  report          DailyReport    @relation(fields: [reportId], references: [id])
+  comments        StoryComment[]
+  engagementEvents EngagementEvent[]
+
+  @@unique([reportId, rank])
+  @@unique([subreddit, redditPostId])
+  @@index([reportId, rank])
+  @@index([subreddit])
+  @@index([redditPostId])
+  @@map("report_stories")
+}
+
+model StoryComment {
+  id              String         @id @default(uuid())
+  storyId         String         @map("story_id")
+  redditCommentId String         @map("reddit_comment_id")
+  redditPermalink String         @map("reddit_permalink")
+  author          String?
+  body            String
+  score           Int            @default(0)
+  createdUtc      DateTime?      @map("created_utc")
+  
+  // Sampling Metadata
+  sampleBucket    SampleBucket   @map("sample_bucket")
+  positionInBucket Int           @map("position_in_bucket")
+  
+  // Display Metadata
+  isHighlighted   Boolean        @default(false) @map("is_highlighted")
+  highlightReason String?        @map("highlight_reason")
+  
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  story           ReportStory    @relation(fields: [storyId], references: [id])
+
+  @@unique([storyId, redditCommentId])
+  @@index([storyId])
+  @@index([isHighlighted])
+  @@map("story_comments")
+}
+
+enum SampleBucket {
+  TOP
+  CONTROVERSIAL
+  NEW
+}
+
+model Subscription {
+  id              String         @id @default(uuid())
+  email           String         @unique
+  status          SubStatus      @default(PENDING)
+  topics          Json?
+  source          String
+  referrer        String?
+  createdAt       DateTime       @default(now()) @map("created_at")
+  confirmedAt     DateTime?      @map("confirmed_at")
+  unsubscribedAt  DateTime?      @map("unsubscribed_at")
+
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@map("subscriptions")
+}
+
+enum SubStatus {
+  PENDING
+  ACTIVE
+  UNSUBSCRIBED
+  BOUNCED
+}
+
+model EngagementEvent {
+  id              String         @id @default(uuid())
+  anonymousId     String         @map("anonymous_id")
+  eventType       EventType      @map("event_type")
+  reportId        String?        @map("report_id")
+  storyId         String?        @map("story_id")
+  metadata        Json?
+  ipHash          String?        @map("ip_hash")
+  userAgentHash   String?        @map("user_agent_hash")
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  story           ReportStory?   @relation(fields: [storyId], references: [id])
+
+  @@index([createdAt(sort: Desc)])
+  @@index([eventType, createdAt(sort: Desc)])
+  @@index([reportId])
+  @@index([storyId])
+  @@index([anonymousId, createdAt(sort: Desc)])
+  @@map("engagement_events")
+}
+
+enum EventType {
+  REACT_INTERESTING
+  SAVE
+  FOLLOW_TOPIC
+  SUBSCRIBE_CLICK
+  STORY_CLICK
+}

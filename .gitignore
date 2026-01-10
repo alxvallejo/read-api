@@ -15,3 +15,5 @@ yarn-error.log*
 # Local keys/certs (keep out of repo)
 keytmp.pem
 *.pem
+
+/generated/prisma

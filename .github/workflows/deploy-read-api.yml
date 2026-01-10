@@ -76,6 +76,12 @@ jobs:
             tar -xzf /tmp/read-api.tar.gz -C /var/www/read-api --no-same-owner --no-same-permissions -m || true
             rm -f /tmp/read-api.tar.gz
             cd /var/www/read-api
+            
+            # Prisma: Generate and Migrate
+            # Ensure .env exists or export variables before running this
+            ./node_modules/.bin/prisma generate
+            ./node_modules/.bin/prisma migrate deploy
+
             PM2="/var/www/read-api/node_modules/.bin/pm2"
             if [ ! -x "$PM2" ]; then
               echo "Project-local pm2 not found at $PM2. Ensure CI packaged node_modules."

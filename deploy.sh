@@ -18,6 +18,12 @@ git pull origin master
 echo "📦 Installing production dependencies..."
 npm ci --production
 
+# Prisma Setup
+echo "💎 Generating Prisma Client..."
+npx prisma generate
+echo "🐘 Applying Database Migrations..."
+npx prisma migrate deploy
+
 # Check if PM2 is being used
 if command -v pm2 &> /dev/null; then
     echo "🔄 Restarting API with PM2..."
