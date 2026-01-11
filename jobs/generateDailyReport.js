@@ -4,6 +4,7 @@ const { Pool } = require('pg');
 const { PrismaPg } = require('@prisma/adapter-pg');
 const redditService = require('../services/redditService');
 const llmService = require('../services/llmService');
+const readController = require('../controllers/readController');
 
 const connectionString = process.env.DATABASE_URL;
 const pool = new Pool({ connectionString });
@@ -13,7 +14,7 @@ const prisma = new PrismaClient({ adapter });
 const TARGET_SUBREDDITS = ['technology', 'worldnews', 'science', 'programming', 'futurology'];
 const STORIES_PER_REPORT = 10;
 
-async function generateDailyReport() {
+async function generateDailyReport(force = false) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
@@ -24,8 +25,8 @@ async function generateDailyReport() {
     where: { reportDate: today }
   });
 
-  if (existing && existing.status === 'PUBLISHED') {
-    console.log('Report already published for today. Skipping.');
+  if (existing && existing.status === 'PUBLISHED' && !force) {
+    console.log('Report already published for today. Use --force to regenerate.');
     return;
   }
 
@@ -81,6 +82,25 @@ async function generateDailyReport() {
   for (const [index, post] of selectedStories.entries()) {
     console.log(`Processing story ${index + 1}: ${post.title}`);
     
+    // Fetch article content
+    let articleContent = null;
+    if (post.url && !post.url.includes('reddit.com') && !post.url.includes('redd.it')) {
+      try {
+        console.log(`  Fetching article: ${post.url}`);
+        const result = await readController.readUrl(post.url, null);
+        if (result && result.content) {
+          articleContent = result.content
+            .replace(/<[^>]*>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 4000);
+          console.log(`  Article fetched: ${articleContent.length} chars`);
+        }
+      } catch (e) {
+        console.log(`  Could not fetch article: ${e.message}`);
+      }
+    }
+
     // Fetch comments
     let comments = [];
     try {
@@ -89,8 +109,8 @@ async function generateDailyReport() {
       console.error(`Error fetching comments for ${post.id}:`, e.message);
     }
 
-    // Generate Analysis
-    const analysis = await llmService.generateStoryAnalysis(post, comments);
+    // Generate Analysis (now with article content)
+    const analysis = await llmService.generateStoryAnalysis(post, comments, articleContent);
     const highlights = await llmService.selectHighlightComments(comments);
 
     // Save Story
@@ -150,7 +170,8 @@ async function generateDailyReport() {
 }
 
 if (require.main === module) {
-  generateDailyReport().catch(e => {
+  const force = process.argv.includes('--force');
+  generateDailyReport(force).catch(e => {
     console.error(e);
     process.exit(1);
   });
