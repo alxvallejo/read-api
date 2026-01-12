@@ -227,13 +227,16 @@ const dailyController = {
         return res.status(400).json({ error: 'Missing required fields' });
       }
 
+      // Note: story_id FK only works with report_stories table (daily reports)
+      // For hourly reports, we skip the FK by not including story_id if it's from hourly
+      // For now, store story_id in metadata instead to avoid FK issues
       await prisma.engagementEvent.create({
         data: {
           anonymousId: anonymous_id,
           eventType: event_type,
-          reportId: report_id,
-          storyId: story_id,
-          metadata
+          reportId: report_id || null,
+          storyId: null, // Disabled due to FK constraint with hourly stories
+          metadata: { ...metadata, originalStoryId: story_id }
         }
       });
 
