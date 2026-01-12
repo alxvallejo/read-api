@@ -87,8 +87,12 @@ function injectMeta(html, meta) {
 
 app.use(helmet());
 // Configure CORS; default to permissive if not set
-const corsOrigin = process.env.CORS_ORIGIN;
-if (corsOrigin) {
+const corsOriginEnv = process.env.CORS_ORIGIN;
+let corsOrigin;
+if (corsOriginEnv) {
+  // Support comma-separated list of origins
+  const origins = corsOriginEnv.split(',').map(o => o.trim());
+  corsOrigin = origins.length === 1 ? origins[0] : origins;
   app.use(cors({ origin: corsOrigin }));
 } else {
   app.use(cors());
