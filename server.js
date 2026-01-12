@@ -183,6 +183,11 @@ app.get('/api/reddit/by_id/:fullname', redditProxy.getById);
 // Public endpoint for fetching post data without auth (for shared links)
 app.get('/api/reddit/public/by_id/:fullname', redditProxy.getByIdPublic);
 
+// Subreddit discovery & rotating feed endpoints
+app.get('/api/reddit/subreddits/popular', redditProxy.getPopularSubreddits);
+app.get('/api/reddit/subreddits/mine', redditProxy.getUserSubreddits); // Pro mode - requires auth
+app.get('/api/reddit/feed/rotating', redditProxy.getRotatingFeed);
+
 // Dynamic share preview route (inject OG/Twitter tags)
 app.get('/p/:fullname', async (req, res) => {
   try {
