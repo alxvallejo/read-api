@@ -169,6 +169,10 @@ app.post('/api/subscribe', dailyController.subscribe);
 app.get('/api/unsubscribe', dailyController.unsubscribe);
 app.post('/api/engagement', dailyController.trackEngagement);
 
+// Hourly Discover API
+app.get('/api/hourly/latest', dailyController.getLatestHourlyReport);
+app.get('/api/hourly/:hour', dailyController.getHourlyReportByHour);
+
 // Reddit API proxy endpoints
 // New OAuth token/refresh endpoints using server env vars
 app.post('/api/reddit/oauth/token', redditProxy.oauthToken);

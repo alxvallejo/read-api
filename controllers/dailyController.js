@@ -46,6 +46,58 @@ const dailyController = {
     }
   },
 
+  async getLatestHourlyReport(req, res) {
+    try {
+      const report = await prisma.hourlyReport.findFirst({
+        where: { status: 'PUBLISHED' },
+        orderBy: { reportHour: 'desc' },
+        include: {
+          stories: {
+            orderBy: { rank: 'asc' }
+          }
+        }
+      });
+
+      if (!report) {
+        return res.status(404).json({ error: 'No hourly reports found' });
+      }
+
+      res.json(report);
+    } catch (error) {
+      console.error('getLatestHourlyReport error:', error);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  },
+
+  async getHourlyReportByHour(req, res) {
+    try {
+      const { hour } = req.params; // ISO timestamp
+      const reportHour = new Date(hour);
+      
+      if (isNaN(reportHour.getTime())) {
+        return res.status(400).json({ error: 'Invalid hour format' });
+      }
+
+      const report = await prisma.hourlyReport.findUnique({
+        where: { reportHour },
+        include: {
+          stories: {
+            orderBy: { rank: 'asc' }
+          }
+        }
+      });
+
+      if (!report || report.status !== 'PUBLISHED') {
+        return res.status(404).json({ error: 'Hourly report not found' });
+      }
+
+      res.json(report);
+    } catch (error) {
+      console.error('getHourlyReportByHour error:', error);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  },
+
   async getReportByDate(req, res) {
     try {
       const { date } = req.params; // YYYY-MM-DD

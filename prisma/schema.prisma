@@ -32,6 +32,59 @@ model DailyReport {
   @@map("daily_reports")
 }
 
+model HourlyReport {
+  id              String         @id @default(uuid())
+  reportHour      DateTime       @unique @map("report_hour") // Truncated to hour
+  status          ReportStatus   @default(DRAFT)
+  title           String?
+  generatedAt     DateTime       @map("generated_at")
+  publishedAt     DateTime?      @map("published_at")
+  sourceSubreddits Json?         @map("source_subreddits") // Array of subreddit names used
+  llmModel        String?        @map("llm_model")
+  llmCostCents    Int?           @map("llm_cost_cents")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  stories         HourlyStory[]
+
+  @@map("hourly_reports")
+}
+
+model HourlyStory {
+  id              String         @id @default(uuid())
+  reportId        String         @map("report_id")
+  rank            Int
+  
+  // Reddit Source Fields
+  subreddit       String
+  redditPostId    String         @map("reddit_post_id")
+  redditPermalink String         @map("reddit_permalink")
+  title           String
+  postUrl         String?        @map("post_url")
+  imageUrl        String?        @map("image_url")
+  author          String?
+  score           Int            @default(0)
+  numComments     Int            @default(0) @map("num_comments")
+  createdUtc      DateTime?      @map("created_utc")
+  
+  // LLM Outputs (lighter than daily)
+  summary         String?
+  sentimentLabel  String?        @map("sentiment_label")
+  topicTags       Json?          @map("topic_tags")
+  
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  report          HourlyReport   @relation(fields: [reportId], references: [id])
+
+  @@unique([reportId, rank])
+  @@unique([reportId, redditPostId])
+  @@index([reportId, rank])
+  @@index([subreddit])
+  @@index([redditPostId])
+  @@map("hourly_stories")
+}
+
 enum ReportStatus {
   DRAFT
   PUBLISHED
