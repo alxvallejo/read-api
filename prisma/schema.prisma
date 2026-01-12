@@ -49,6 +49,7 @@ model ReportStory {
   redditPermalink String         @map("reddit_permalink")
   title           String
   postUrl         String?        @map("post_url")
+  imageUrl        String?        @map("image_url")
   author          String?
   score           Int            @default(0)
   numComments     Int            @default(0) @map("num_comments")

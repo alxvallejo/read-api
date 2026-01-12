@@ -113,6 +113,15 @@ async function generateDailyReport(force = false) {
     const analysis = await llmService.generateStoryAnalysis(post, comments, articleContent);
     const highlights = await llmService.selectHighlightComments(comments);
 
+    // Extract image URL from Reddit post
+    let imageUrl = null;
+    if (post.preview?.images?.[0]?.source?.url) {
+      // Reddit HTML-encodes the URL, decode it
+      imageUrl = post.preview.images[0].source.url.replace(/&amp;/g, '&');
+    } else if (post.thumbnail && post.thumbnail.startsWith('http')) {
+      imageUrl = post.thumbnail;
+    }
+
     // Save Story
     const story = await prisma.reportStory.create({
       data: {
@@ -123,6 +132,7 @@ async function generateDailyReport(force = false) {
         redditPermalink: post.permalink,
         title: post.title,
         postUrl: post.url,
+        imageUrl: imageUrl,
         author: post.author,
         score: post.score,
         numComments: post.num_comments,
