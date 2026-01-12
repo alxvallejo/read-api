@@ -32,6 +32,65 @@ model DailyReport {
   @@map("daily_reports")
 }
 
+// Hourly Pulse - Top posts from r/all with top comments
+model HourlyPulseReport {
+  id              String             @id @default(uuid())
+  reportHour      DateTime           @unique @map("report_hour")
+  status          ReportStatus       @default(DRAFT)
+  title           String?
+  generatedAt     DateTime           @map("generated_at")
+  publishedAt     DateTime?          @map("published_at")
+  llmModel        String?            @map("llm_model")
+  llmCostCents    Int?               @map("llm_cost_cents")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  stories         HourlyPulseStory[]
+
+  @@map("hourly_pulse_reports")
+}
+
+model HourlyPulseStory {
+  id              String             @id @default(uuid())
+  reportId        String             @map("report_id")
+  rank            Int
+  
+  // Reddit Source Fields
+  subreddit       String
+  redditPostId    String             @map("reddit_post_id")
+  redditPermalink String             @map("reddit_permalink")
+  title           String
+  postUrl         String?            @map("post_url")
+  imageUrl        String?            @map("image_url")
+  author          String?
+  score           Int                @default(0)
+  numComments     Int                @default(0) @map("num_comments")
+  createdUtc      DateTime?          @map("created_utc")
+  
+  // LLM Outputs
+  summary         String?
+  sentimentLabel  String?            @map("sentiment_label")
+  topicTags       Json?              @map("topic_tags")
+  
+  // Top comment
+  topCommentAuthor  String?          @map("top_comment_author")
+  topCommentBody    String?          @map("top_comment_body")
+  topCommentScore   Int?             @map("top_comment_score")
+  
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  report          HourlyPulseReport  @relation(fields: [reportId], references: [id])
+
+  @@unique([reportId, rank])
+  @@unique([reportId, redditPostId])
+  @@index([reportId, rank])
+  @@index([subreddit])
+  @@index([redditPostId])
+  @@map("hourly_pulse_stories")
+}
+
+// Hourly Discover - Random posts from popular subreddits
 model HourlyReport {
   id              String         @id @default(uuid())
   reportHour      DateTime       @unique @map("report_hour") // Truncated to hour
@@ -71,6 +130,11 @@ model HourlyStory {
   summary         String?
   sentimentLabel  String?        @map("sentiment_label")
   topicTags       Json?          @map("topic_tags")
+  
+  // Top comment
+  topCommentAuthor  String?      @map("top_comment_author")
+  topCommentBody    String?      @map("top_comment_body")
+  topCommentScore   Int?         @map("top_comment_score")
   
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")

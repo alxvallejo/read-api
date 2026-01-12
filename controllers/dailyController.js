@@ -46,6 +46,7 @@ const dailyController = {
     }
   },
 
+  // Hourly Discover (random subreddits)
   async getLatestHourlyReport(req, res) {
     try {
       const report = await prisma.hourlyReport.findFirst({
@@ -65,6 +66,59 @@ const dailyController = {
       res.json(report);
     } catch (error) {
       console.error('getLatestHourlyReport error:', error);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  },
+
+  // Hourly Pulse (top posts from r/all with top comments)
+  async getLatestHourlyPulseReport(req, res) {
+    try {
+      const report = await prisma.hourlyPulseReport.findFirst({
+        where: { status: 'PUBLISHED' },
+        orderBy: { reportHour: 'desc' },
+        include: {
+          stories: {
+            orderBy: { rank: 'asc' }
+          }
+        }
+      });
+
+      if (!report) {
+        return res.status(404).json({ error: 'No hourly pulse reports found' });
+      }
+
+      res.json(report);
+    } catch (error) {
+      console.error('getLatestHourlyPulseReport error:', error);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  },
+
+  async getHourlyPulseReportByHour(req, res) {
+    try {
+      const { hour } = req.params; // ISO timestamp
+      const reportHour = new Date(hour);
+      
+      if (isNaN(reportHour.getTime())) {
+        return res.status(400).json({ error: 'Invalid hour format' });
+      }
+
+      const report = await prisma.hourlyPulseReport.findUnique({
+        where: { reportHour },
+        include: {
+          stories: {
+            orderBy: { rank: 'asc' }
+          }
+        }
+      });
+
+      if (!report || report.status !== 'PUBLISHED') {
+        return res.status(404).json({ error: 'Hourly pulse report not found' });
+      }
+
+      res.json(report);
+    } catch (error) {
+      console.error('getHourlyPulseReportByHour error:', error);
       res.status(500).json({ error: 'Internal Server Error' });
     }
   },

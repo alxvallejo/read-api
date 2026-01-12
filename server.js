@@ -169,9 +169,13 @@ app.post('/api/subscribe', dailyController.subscribe);
 app.get('/api/unsubscribe', dailyController.unsubscribe);
 app.post('/api/engagement', dailyController.trackEngagement);
 
-// Hourly Discover API
+// Hourly Discover API (random subreddits)
 app.get('/api/hourly/latest', dailyController.getLatestHourlyReport);
 app.get('/api/hourly/:hour', dailyController.getHourlyReportByHour);
+
+// Hourly Pulse API (top posts from r/all with top comments)
+app.get('/api/hourly-pulse/latest', dailyController.getLatestHourlyPulseReport);
+app.get('/api/hourly-pulse/:hour', dailyController.getHourlyPulseReportByHour);
 
 // Reddit API proxy endpoints
 // New OAuth token/refresh endpoints using server env vars
