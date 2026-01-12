@@ -14,13 +14,38 @@ const STORIES_PER_REPORT = 12;
 const SUBREDDITS_TO_SAMPLE = 6;
 const POSTS_PER_SUBREDDIT = 4;
 
-// Fetch popular subreddits from Reddit
+// Fetch popular subreddits from Reddit using authenticated API
 async function getPopularSubreddits(limit = 50) {
   const fetch = require('node-fetch');
   const UA = process.env.USER_AGENT || 'Reddzit/1.0';
+  const clientId = process.env.REDDIT_CLIENT_ID;
+  const clientSecret = process.env.REDDIT_CLIENT_SECRET;
   
-  const response = await fetch(`https://www.reddit.com/subreddits/popular.json?limit=${limit}`, {
-    headers: { 'User-Agent': UA }
+  // Get access token
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+  const tokenRes = await fetch('https://www.reddit.com/api/v1/access_token', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${credentials}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': UA,
+    },
+    body: 'grant_type=client_credentials',
+  });
+  
+  if (!tokenRes.ok) {
+    throw new Error(`Failed to get Reddit access token: ${tokenRes.statusText}`);
+  }
+  
+  const tokenData = await tokenRes.json();
+  const accessToken = tokenData.access_token;
+  
+  // Fetch popular subreddits with auth
+  const response = await fetch(`https://oauth.reddit.com/subreddits/popular?limit=${limit}`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'User-Agent': UA
+    }
   });
   
   if (!response.ok) {
