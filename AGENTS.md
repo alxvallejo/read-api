@@ -59,3 +59,7 @@
 - Start the app: `node server.js` (or `node cluster.js` for multiprocess).
 - Ensure client calls include proper `Authorization` headers and required bodies noted above.
 - For production, a process manager (e.g., pm2) can be used; see `readme.md` for a brief note.
+
+**Pro Features**
+- **Feature 1 – Report Generation:** Generate reports based on saved Reddit posts. This is the first Pro feature.
+- **Feature 2 – Saved Posts Persistence (Planned):** Persist saved posts to the database, enabling search across reports and historical access to saved content.
