@@ -57,8 +57,15 @@ function pickPreviewImage(post) {
 }
 
 async function fetchRedditPublic(fullname) {
-  const endpoint = `https://www.reddit.com/by_id/${encodeURIComponent(fullname)}.json`;
-  const r = await nodeFetch(endpoint, { headers: { 'User-Agent': 'Reddzit/preview' } });
+  // Use app-only OAuth since Reddit blocks unauthenticated .json endpoints
+  const accessToken = await redditProxy.getAppOnlyAccessToken();
+  const endpoint = `https://oauth.reddit.com/by_id/${encodeURIComponent(fullname)}`;
+  const r = await nodeFetch(endpoint, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'User-Agent': process.env.USER_AGENT || 'Reddzit/1.0'
+    }
+  });
   if (!r.ok) throw new Error('Reddit fetch failed: ' + r.status);
   const json = await r.json();
   const post = json && json.data && json.data.children && json.data.children[0] && json.data.children[0].data;

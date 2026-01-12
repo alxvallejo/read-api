@@ -11,6 +11,47 @@ function getBasicAuthHeader() {
   return `Basic ${credentials}`;
 }
 
+// Cache for application-only OAuth token
+let appOnlyToken = null;
+let appOnlyTokenExpiry = 0;
+
+async function getAppOnlyAccessToken() {
+  // Return cached token if still valid (with 60s buffer)
+  if (appOnlyToken && Date.now() < appOnlyTokenExpiry - 60000) {
+    return appOnlyToken;
+  }
+
+  const authHeader = getBasicAuthHeader();
+  if (!authHeader) {
+    throw new Error('Missing Reddit credentials for app-only auth');
+  }
+
+  const params = new URLSearchParams({
+    grant_type: 'client_credentials',
+  });
+
+  const response = await fetch('https://www.reddit.com/api/v1/access_token', {
+    method: 'POST',
+    headers: {
+      'Authorization': authHeader,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': UA,
+    },
+    body: params,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to get app-only token: ${response.status} ${text}`);
+  }
+
+  const data = await response.json();
+  appOnlyToken = data.access_token;
+  // Token typically expires in 3600 seconds (1 hour)
+  appOnlyTokenExpiry = Date.now() + (data.expires_in || 3600) * 1000;
+  return appOnlyToken;
+}
+
 const redditProxy = {
   async proxyRequest(url, options = {}) {
     try {
@@ -163,6 +204,7 @@ const redditProxy = {
   },
 
   // Public endpoint for fetching post data without auth (for shared links)
+  // Uses application-only OAuth since Reddit blocks unauthenticated .json endpoints
   async getByIdPublic(req, res) {
     try {
       const { fullname } = req.params;
@@ -172,22 +214,22 @@ const redditProxy = {
         return res.status(400).json({ error: 'Invalid fullname format' });
       }
 
-      const isComment = fullname.startsWith('t1_');
-      let url;
-      if (isComment) {
-        url = `https://www.reddit.com/api/info.json?id=${encodeURIComponent(fullname)}`;
-      } else {
-        url = `https://www.reddit.com/by_id/${encodeURIComponent(fullname)}.json`;
-      }
+      // Get application-only OAuth token
+      const accessToken = await getAppOnlyAccessToken();
+
+      // Use OAuth endpoint instead of public .json endpoint
+      const url = `https://oauth.reddit.com/by_id/${encodeURIComponent(fullname)}`;
 
       const r = await redditProxy.proxyRequest(url, {
         headers: {
+          'Authorization': `Bearer ${accessToken}`,
           'User-Agent': UA,
         }
       });
       if (r.json !== null) return res.status(r.status).json(r.json);
       return res.status(r.status).send(r.text || '');
     } catch (error) {
+      console.error('getByIdPublic error:', error);
       res.status(500).json({ error: error.message });
     }
   },
@@ -478,3 +520,4 @@ const redditProxy = {
 };
 
 module.exports = redditProxy;
+module.exports.getAppOnlyAccessToken = getAppOnlyAccessToken;
