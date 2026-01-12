@@ -18,12 +18,14 @@ Respond with valid JSON only, no markdown. Use this exact structure:
 
 Writing rules:
 - Lead with the most interesting or important fact - no throat-clearing
+- Do NOT repeat or paraphrase the post title or obvious headline facts; assume the user can already see the title
+- Focus on context, implications, what's new, who/why/what it means, not re-stating the headline
 - NEVER use phrases like: "The article discusses", "This piece explores", "The author argues", "According to the article", "The post details"
 - Use active voice: "Tesla recalled 500k vehicles" not "500k vehicles were recalled by Tesla"
 - Write as if stating facts directly, not describing an article about facts
 - Match the tone: punchy for breaking news, substantive for analysis
 - Be factual - do not invent information not present in the article
-- If article content is unavailable, work with the title but don't pretend you read more
+- If article content is unavailable, work with the title but expand with likely context/implications without rephrasing it
 - Keep takeaways actionable and specific (under 15 words each)
 - Use 1-3 topic tags that describe the subject matter`;
 
@@ -49,6 +51,46 @@ async function fetchArticleContent(url) {
   return null;
 }
 
+function normalizeText(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[“”"'’‘]/g, '')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function sharesHeadline(sentence, title) {
+  const titleTokens = new Set(normalizeText(title).split(' ').filter(w => w.length > 3));
+  if (titleTokens.size === 0) return false;
+  const sentTokens = new Set(normalizeText(sentence).split(' ').filter(w => w.length > 3));
+  if (sentTokens.size === 0) return false;
+  let overlap = 0;
+  for (const t of titleTokens) if (sentTokens.has(t)) overlap++;
+  const jaccard = overlap / new Set([...titleTokens, ...sentTokens]).size;
+  const coverage = overlap / titleTokens.size; // how much of the title is repeated
+  return jaccard >= 0.6 || coverage >= 0.7;
+}
+
+function removeHeadlineRepetition(summary, title) {
+  if (!summary || !title) return summary;
+
+  // 1) Remove exact title occurrences (case-insensitive)
+  try {
+    const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(escaped, 'gi');
+    summary = summary.replace(re, '').replace(/\s{2,}/g, ' ').trim();
+  } catch (_) {}
+
+  // 2) Drop a first sentence that largely repeats the title
+  const parts = summary.split(/(?<=[.!?])\s+/);
+  if (parts.length > 0 && sharesHeadline(parts[0], title)) {
+    parts.shift();
+  }
+  const cleaned = parts.join(' ').trim();
+  return cleaned.length > 0 ? cleaned : summary.trim();
+}
+
 async function generateStoryAnalysis(story, comments, articleContent = null) {
   // Fallback if no API key configured
   if (!process.env.OPENAI_API_KEY) {
@@ -59,7 +101,7 @@ async function generateStoryAnalysis(story, comments, articleContent = null) {
   console.log(`Generating OpenAI analysis for: ${story.title}`);
 
   // Build the prompt based on available content
-  let userPrompt = `Post Title: ${story.title}
+  let userPrompt = `Post Title (do not restate): ${story.title}
 Subreddit: r/${story.subreddit}
 Score: ${story.score} | Comments: ${story.num_comments}`;
 
@@ -87,11 +129,15 @@ Score: ${story.score} | Comments: ${story.num_comments}`;
     }
 
     const parsed = JSON.parse(content);
+
+    // Enforce no-headline-repetition post-processing
+    const cleanedSummary = removeHeadlineRepetition(parsed.summary || '', story.title);
+
     return {
-      summary: parsed.summary || 'Article summary unavailable.',
+      summary: cleanedSummary || 'Context unavailable beyond the headline.',
       sentimentLabel: parsed.sentimentLabel || 'INFORMATIVE',
-      takeaways: parsed.takeaways || [],
-      topicTags: parsed.topicTags || [],
+      takeaways: Array.isArray(parsed.takeaways) ? parsed.takeaways : [],
+      topicTags: Array.isArray(parsed.topicTags) ? parsed.topicTags : [],
       contentWarning: parsed.contentWarning || null
     };
   } catch (error) {
