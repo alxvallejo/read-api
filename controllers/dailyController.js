@@ -1,6 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const { Pool } = require('pg');
 const { PrismaPg } = require('@prisma/adapter-pg');
+const emailService = require('../services/emailService');
 
 // Initialize Prisma
 // Note: In production, ensure this is singleton or handled correctly
@@ -87,13 +88,16 @@ const dailyController = {
       }
 
       // Upsert subscription
+      // Check if already subscribed
+      const existing = await prisma.subscription.findUnique({ where: { email } });
+      const isNewSubscription = !existing || existing.status !== 'ACTIVE';
+
       const sub = await prisma.subscription.upsert({
         where: { email },
         update: {
-          status: 'ACTIVE', // Or pending if double opt-in
+          status: 'ACTIVE',
           topics: topics || undefined,
           source: source || undefined,
-          updatedAt: new Date() // Schema doesn't have updatedAt but useful
         },
         create: {
           email,
@@ -103,9 +107,62 @@ const dailyController = {
         }
       });
 
-      res.json({ success: true, id: sub.id });
+      // Send welcome email for new subscriptions
+      if (isNewSubscription) {
+        try {
+          await emailService.sendWelcomeEmail(email);
+        } catch (emailError) {
+          console.error('Failed to send welcome email:', emailError);
+          // Don't fail the subscription if email fails
+        }
+      }
+
+      res.json({ success: true, id: sub.id, isNew: isNewSubscription });
     } catch (error) {
       console.error('subscribe error:', error);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  },
+
+  async unsubscribe(req, res) {
+    try {
+      const { email, token } = req.query;
+      
+      if (!email) {
+        return res.status(400).json({ error: 'Email is required' });
+      }
+
+      // Verify token matches (simple hash check)
+      const expectedToken = Buffer.from(email).toString('base64').slice(0, 16);
+      if (token !== expectedToken) {
+        return res.status(400).json({ error: 'Invalid unsubscribe link' });
+      }
+
+      const sub = await prisma.subscription.findUnique({ where: { email } });
+      
+      if (!sub) {
+        return res.status(404).json({ error: 'Subscription not found' });
+      }
+
+      await prisma.subscription.update({
+        where: { email },
+        data: { status: 'UNSUBSCRIBED' }
+      });
+
+      // Return HTML for browser visits
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head><title>Unsubscribed</title></head>
+        <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+          <h1>Successfully Unsubscribed</h1>
+          <p>You've been removed from the Daily Reddit Pulse newsletter.</p>
+          <p>We're sorry to see you go!</p>
+        </body>
+        </html>
+      `);
+    } catch (error) {
+      console.error('unsubscribe error:', error);
       res.status(500).json({ error: 'Internal Server Error' });
     }
   },

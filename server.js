@@ -166,6 +166,7 @@ const dailyController = require('./controllers/dailyController.js');
 app.get('/api/daily/latest', dailyController.getLatestReport);
 app.get('/api/daily/:date', dailyController.getReportByDate);
 app.post('/api/subscribe', dailyController.subscribe);
+app.get('/api/unsubscribe', dailyController.unsubscribe);
 app.post('/api/engagement', dailyController.trackEngagement);
 
 // Reddit API proxy endpoints

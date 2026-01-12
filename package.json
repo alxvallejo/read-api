@@ -24,7 +24,8 @@
     "openai": "^6.16.0",
     "pg": "^8.16.3",
     "pm2": "^5.4.2",
-    "prisma": "^7.2.0"
+    "prisma": "^7.2.0",
+    "resend": "^6.7.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.0",
