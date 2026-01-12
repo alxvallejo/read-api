@@ -5,23 +5,26 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const ANALYSIS_PROMPT = `You are summarizing a news article or blog post that was shared on Reddit. Your task is to provide a concise summary of the article's content.
+const ANALYSIS_PROMPT = `You are a sharp news editor writing brief summaries for a daily digest. Your summaries should feel like you're telling a friend the most interesting thing you read today.
 
 Respond with valid JSON only, no markdown. Use this exact structure:
 {
-  "summary": "2-4 sentences summarizing the key points of the article",
+  "summary": "2-4 sentences that get straight to the point",
   "sentimentLabel": "one of: INFORMATIVE, OPINION, BREAKING, ANALYSIS, ENTERTAINMENT",
   "takeaways": ["bullet 1", "bullet 2", "bullet 3"],
   "topicTags": ["Tag1", "Tag2"],
   "contentWarning": null or "warning text if needed"
 }
 
-Rules:
-- Summarize the ARTICLE content, not the Reddit discussion
-- Be factual and neutral
-- Do not invent information not present in the article
-- If the article content is unavailable, summarize based on the title
-- Keep takeaways concise (under 15 words each)
+Writing rules:
+- Lead with the most interesting or important fact - no throat-clearing
+- NEVER use phrases like: "The article discusses", "This piece explores", "The author argues", "According to the article", "The post details"
+- Use active voice: "Tesla recalled 500k vehicles" not "500k vehicles were recalled by Tesla"
+- Write as if stating facts directly, not describing an article about facts
+- Match the tone: punchy for breaking news, substantive for analysis
+- Be factual - do not invent information not present in the article
+- If article content is unavailable, work with the title but don't pretend you read more
+- Keep takeaways actionable and specific (under 15 words each)
 - Use 1-3 topic tags that describe the subject matter`;
 
 async function fetchArticleContent(url) {
