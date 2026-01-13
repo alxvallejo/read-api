@@ -296,11 +296,17 @@ app.get('/api/user/:redditId/subscription', userController.getSubscriptionStatus
 // Admin API (protected)
 app.get('/api/admin/stats', adminController.requireAdmin, adminController.getStats);
 app.get('/api/admin/users', adminController.requireAdmin, adminController.listUsers);
-app.post('/api/admin/users/:redditId/pro', adminController.requireAdmin, adminController.setUserPro);
-app.post('/api/admin/users/:redditId/admin', adminController.requireAdmin, adminController.setUserAdmin);
+app.post('/api/admin/users/:redditUsername/pro', adminController.requireAdmin, adminController.setUserPro);
+app.post('/api/admin/users/:redditUsername/admin', adminController.requireAdmin, adminController.setUserAdmin);
 app.get('/api/admin/briefings', adminController.requireAdmin, adminController.listBriefings);
 app.post('/api/admin/briefings/:id/regenerate', adminController.requireAdmin, adminController.regenerateBriefing);
 app.delete('/api/admin/briefings/:id', adminController.requireAdmin, adminController.deleteBriefing);
+
+// Cron Job Admin API
+app.get('/api/admin/jobs', adminController.requireAdmin, adminController.listJobs);
+app.patch('/api/admin/jobs/:name', adminController.requireAdmin, adminController.updateJob);
+app.post('/api/admin/jobs/:name/trigger', adminController.requireAdmin, adminController.triggerJob);
+app.get('/api/admin/jobs/:name/runs', adminController.requireAdmin, adminController.getJobRuns);
 
 // Dynamic share preview route (inject OG/Twitter tags)
 app.get('/p/:fullname', async (req, res) => {
@@ -395,3 +401,38 @@ app.get('/p/:fullname/:slug', async (req, res) => {
 //var server = https.createServer(certOptions, app).listen(port, () => console.log('Alex made a thing at port ' + port))
 
 app.listen(port, () => console.log(`Read API listening on port ${port}!`));
+
+// ============ Cron Job Sync on Startup ============
+const pm2Service = require('./services/pm2Service');
+
+async function syncCronJobs() {
+  try {
+    const jobs = await prisma.cronJob.findMany();
+    if (jobs.length === 0) {
+      console.log('[CronSync] No cron jobs found in database. Seed them first.');
+      return;
+    }
+
+    console.log(`[CronSync] Syncing ${jobs.length} cron jobs to PM2...`);
+
+    for (const job of jobs) {
+      try {
+        await pm2Service.applyJobConfig({
+          name: job.name,
+          script: job.script,
+          cronExpression: job.cronExpression,
+          enabled: job.enabled,
+        });
+        console.log(`[CronSync]   - ${job.name}: ${job.enabled ? 'enabled' : 'disabled'}`);
+      } catch (e) {
+        console.error(`[CronSync]   - ${job.name}: failed - ${e.message}`);
+      }
+    }
+    console.log('[CronSync] Complete.');
+  } catch (e) {
+    console.error('[CronSync] Failed to sync cron jobs:', e.message);
+  }
+}
+
+// Run sync after a short delay to ensure DB is ready
+setTimeout(syncCronJobs, 3000);
