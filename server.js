@@ -168,6 +168,7 @@ app.post('/getContent', (req, res) => {
 });
 
 const dailyController = require('./controllers/dailyController.js');
+const discoverController = require('./controllers/discoverController.js');
 
 // Daily Pulse API
 app.get('/api/daily/latest', dailyController.getLatestReport);
@@ -202,6 +203,15 @@ app.get('/api/reddit/public/by_id/:fullname', redditProxy.getByIdPublic);
 app.get('/api/reddit/subreddits/popular', redditProxy.getPopularSubreddits);
 app.get('/api/reddit/subreddits/mine', redditProxy.getUserSubreddits); // Pro mode - requires auth
 app.get('/api/reddit/feed/rotating', redditProxy.getRotatingFeed);
+
+// Category-Based Discover API (Pro Feature)
+app.get('/api/discover/categories', discoverController.getCategories);
+app.get('/api/discover/user/:userId/preferences', discoverController.getUserPreferences);
+app.post('/api/discover/user/:userId/categories', discoverController.setUserCategories);
+app.post('/api/discover/user/:userId/subreddits/toggle', discoverController.toggleSubreddit);
+app.post('/api/discover/user/:userId/generate', discoverController.generateReport);
+app.get('/api/discover/user/:userId/reports', discoverController.getUserReports);
+app.get('/api/discover/user/:userId/reports/latest', discoverController.getLatestReport);
 
 // Dynamic share preview route (inject OG/Twitter tags)
 app.get('/p/:fullname', async (req, res) => {

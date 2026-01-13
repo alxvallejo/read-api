@@ -285,3 +285,127 @@ enum EventType {
   SUBSCRIBE_CLICK
   STORY_CLICK
 }
+
+// ============ Category-Based Discovery (Pro Feature) ============
+
+model Category {
+  id          String      @id @default(uuid())
+  slug        String      @unique
+  name        String
+  description String?
+  isActive    Boolean     @default(true) @map("is_active")
+  sortOrder   Int         @default(0) @map("sort_order")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  subreddits  Subreddit[]
+  userSelections UserCategorySelection[]
+
+  @@map("categories")
+}
+
+model Subreddit {
+  id          String    @id @default(uuid())
+  name        String    @unique  // Without r/ prefix, e.g. "programming"
+  categoryId  String    @map("category_id")
+  isDefault   Boolean   @default(true) @map("is_default")  // Included by default when category selected
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  category    Category  @relation(fields: [categoryId], references: [id])
+  userToggles UserSubredditToggle[]
+
+  @@index([categoryId])
+  @@map("subreddits")
+}
+
+model UserCategorySelection {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")  // Reddit username or anonymous ID
+  categoryId  String    @map("category_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  category    Category  @relation(fields: [categoryId], references: [id])
+
+  @@unique([userId, categoryId])
+  @@index([userId])
+  @@map("user_category_selections")
+}
+
+model UserSubredditToggle {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  subredditId String    @map("subreddit_id")
+  enabled     Boolean   @default(true)  // false = user disabled this subreddit
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  subreddit   Subreddit @relation(fields: [subredditId], references: [id])
+
+  @@unique([userId, subredditId])
+  @@index([userId])
+  @@map("user_subreddit_toggles")
+}
+
+// User's generated discover reports
+model DiscoverReport {
+  id              String          @id @default(uuid())
+  userId          String          @map("user_id")
+  status          ReportStatus    @default(DRAFT)
+  title           String?
+  generatedAt     DateTime        @map("generated_at")
+  publishedAt     DateTime?       @map("published_at")
+  sourceCategories Json?          @map("source_categories")  // Snapshot of categories used
+  sourceSubreddits Json?          @map("source_subreddits")  // Snapshot of subreddits used
+  llmModel        String?         @map("llm_model")
+  llmCostCents    Int?            @map("llm_cost_cents")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  stories         DiscoverStory[]
+
+  @@index([userId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("discover_reports")
+}
+
+model DiscoverStory {
+  id              String          @id @default(uuid())
+  reportId        String          @map("report_id")
+  rank            Int
+  
+  // Reddit Source Fields
+  subreddit       String
+  redditPostId    String          @map("reddit_post_id")
+  redditPermalink String          @map("reddit_permalink")
+  title           String
+  postUrl         String?         @map("post_url")
+  imageUrl        String?         @map("image_url")
+  author          String?
+  score           Int             @default(0)
+  numComments     Int             @default(0) @map("num_comments")
+  createdUtc      DateTime?       @map("created_utc")
+  isSelfPost      Boolean         @default(false) @map("is_self_post")
+  
+  // LLM Outputs
+  summary         String?
+  sentimentLabel  String?         @map("sentiment_label")
+  topicTags       Json?           @map("topic_tags")
+  
+  // Top comment
+  topCommentAuthor  String?       @map("top_comment_author")
+  topCommentBody    String?       @map("top_comment_body")
+  topCommentScore   Int?          @map("top_comment_score")
+  
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  report          DiscoverReport  @relation(fields: [reportId], references: [id])
+
+  @@unique([reportId, rank])
+  @@unique([reportId, redditPostId])
+  @@index([reportId, rank])
+  @@index([subreddit])
+  @@index([redditPostId])
+  @@map("discover_stories")
+}
