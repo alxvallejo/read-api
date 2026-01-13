@@ -48,7 +48,7 @@ async function generateGlobalBriefing(force = false) {
 
   // 1. Check if briefing exists for this window
   const existing = await prisma.globalBriefing.findUnique({
-    where: { briefingTime }
+    where: { periodStart: briefingTime }
   });
 
   if (existing && existing.status === 'PUBLISHED' && !force) {
@@ -153,7 +153,7 @@ async function generateGlobalBriefing(force = false) {
   } else {
     briefing = await prisma.globalBriefing.create({
       data: {
-        briefingTime,
+        periodStart: briefingTime,
         status: 'DRAFT',
         generatedAt: new Date(),
         title: 'Reddit Briefing', // Will be updated after LLM

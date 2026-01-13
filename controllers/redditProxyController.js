@@ -289,6 +289,13 @@ const redditProxy = {
         redirect_uri: REDDIT_REDIRECT_URI,
       });
 
+      console.log('oauthToken DEBUG', {
+        clientIdPrefix: REDDIT_CLIENT_ID?.slice(0, 5),
+        clientIdLength: REDDIT_CLIENT_ID?.length,
+        redirectUri: REDDIT_REDIRECT_URI,
+        codeLength: code?.length,
+      });
+
       const r = await fetch('https://www.reddit.com/api/v1/access_token', {
         method: 'POST',
         headers: {

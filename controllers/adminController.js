@@ -189,7 +189,7 @@ async function listBriefings(req, res) {
 
     const [briefings, total] = await Promise.all([
       prisma.globalBriefing.findMany({
-        orderBy: { briefingTime: 'desc' },
+        orderBy: { periodStart: 'desc' },
         skip: offset,
         take: limit,
         include: {

@@ -199,6 +199,7 @@ app.post('/getContent', (req, res) => {
 
 const dailyController = require('./controllers/dailyController.js');
 const discoverController = require('./controllers/discoverController.js');
+const rssService = require('./services/rssService.js');
 const briefingController = require('./controllers/briefingController.js');
 const userController = require('./controllers/userController.js');
 const adminController = require('./controllers/adminController.js');
@@ -217,6 +218,17 @@ app.get('/api/hourly/:hour', dailyController.getHourlyReportByHour);
 // Hourly Pulse API (top posts from r/all with top comments)
 app.get('/api/hourly-pulse/latest', dailyController.getLatestHourlyPulseReport);
 app.get('/api/hourly-pulse/:hour', dailyController.getHourlyPulseReportByHour);
+
+// Trending RSS API (no OAuth required)
+app.get('/api/trending/rss', async (req, res) => {
+  try {
+    const posts = await rssService.getTrendingFromRSS('all', 15);
+    res.json({ posts });
+  } catch (error) {
+    console.error('RSS endpoint error:', error.message);
+    res.status(500).json({ error: 'Failed to fetch trending posts' });
+  }
+});
 
 // Reddit API proxy endpoints
 // New OAuth token/refresh endpoints using server env vars

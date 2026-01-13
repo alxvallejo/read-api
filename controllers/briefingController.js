@@ -15,13 +15,10 @@ async function getLatestBriefing(req, res) {
   try {
     const briefing = await prisma.globalBriefing.findFirst({
       where: { status: 'PUBLISHED' },
-      orderBy: { briefingTime: 'desc' },
+      orderBy: { periodStart: 'desc' },
       include: {
         stories: {
           orderBy: { rank: 'asc' },
-          include: {
-            category: { select: { id: true, name: true, slug: true } }
-          }
         }
       }
     });
@@ -50,9 +47,6 @@ async function getBriefingById(req, res) {
       include: {
         stories: {
           orderBy: { rank: 'asc' },
-          include: {
-            category: { select: { id: true, name: true, slug: true } }
-          }
         }
       }
     });
@@ -80,13 +74,13 @@ async function getBriefingHistory(req, res) {
     const [briefings, total] = await Promise.all([
       prisma.globalBriefing.findMany({
         where: { status: 'PUBLISHED' },
-        orderBy: { briefingTime: 'desc' },
+        orderBy: { periodStart: 'desc' },
         skip: offset,
         take: limit,
         select: {
           id: true,
           title: true,
-          briefingTime: true,
+          periodStart: true,
           publishedAt: true,
           executiveSummary: true,
           _count: { select: { stories: true } }
