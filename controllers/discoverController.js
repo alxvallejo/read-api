@@ -311,11 +311,22 @@ async function generateReport(req, res) {
 
     console.log(`  Processing ${selectedStories.length} stories with LLM...`);
 
-    // Process each story with LLM
+    // Process each story with LLM and fetch top comment
     for (const [index, post] of selectedStories.entries()) {
       console.log(`  [${index + 1}/${selectedStories.length}] ${post.title.slice(0, 50)}...`);
 
-      const analysis = await llmService.generateStoryAnalysis(post, [], null);
+      // Fetch top comment for this post
+      let topComment = null;
+      try {
+        const comments = await redditService.getPostComments(post.id);
+        if (comments.length > 0) {
+          topComment = comments[0];
+        }
+      } catch (e) {
+        console.error(`    Error fetching comments for ${post.id}:`, e.message);
+      }
+
+      const analysis = await llmService.generateStoryAnalysis(post, topComment ? [topComment] : [], null);
 
       // Extract image URL
       let imageUrl = null;
@@ -343,6 +354,9 @@ async function generateReport(req, res) {
           summary: analysis.summary,
           sentimentLabel: analysis.sentimentLabel,
           topicTags: analysis.topicTags,
+          topCommentAuthor: topComment?.author || null,
+          topCommentBody: topComment?.body || null,
+          topCommentScore: topComment?.score || null,
         },
       });
     }
