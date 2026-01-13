@@ -35,8 +35,16 @@ function getCurrentBriefingWindow() {
  */
 async function generateGlobalBriefing(force = false) {
   const briefingTime = getCurrentBriefingWindow();
-  
+
   console.log(`Starting Global Briefing Generation for ${briefingTime.toISOString()}`);
+
+  // 0. Check if Reddit API is restricted
+  const isRestricted = await redditService.isApiRestricted(prisma);
+  if (isRestricted) {
+    console.log('Reddit API is currently restricted. Skipping Global Briefing generation.');
+    await prisma.$disconnect();
+    return null;
+  }
 
   // 1. Check if briefing exists for this window
   const existing = await prisma.globalBriefing.findUnique({

@@ -454,7 +454,7 @@ model GlobalBriefingStory {
   id              String          @id @default(uuid())
   briefingId      String          @map("briefing_id")
   rank            Int
-  
+
   // Reddit Source Fields
   subreddit       String
   redditPostId    String          @map("reddit_post_id")
@@ -467,17 +467,17 @@ model GlobalBriefingStory {
   numComments     Int             @default(0) @map("num_comments")
   createdUtc      DateTime?       @map("created_utc")
   isSelfPost      Boolean         @default(false) @map("is_self_post")
-  
+
   // LLM Outputs
   summary         String?
   sentimentLabel  String?         @map("sentiment_label")
   topicTags       Json?           @map("topic_tags")
-  
+
   // Top comment
   topCommentAuthor  String?       @map("top_comment_author")
   topCommentBody    String?       @map("top_comment_body")
   topCommentScore   Int?          @map("top_comment_score")
-  
+
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
 
@@ -489,4 +489,20 @@ model GlobalBriefingStory {
   @@index([subreddit])
   @@index([redditPostId])
   @@map("global_briefing_stories")
+}
+
+// ============ API Health Tracking ============
+
+model ApiStatus {
+  id               String    @id @default("reddit")
+  isHealthy        Boolean   @default(true) @map("is_healthy")
+  lastCheckedAt    DateTime  @map("last_checked_at")
+  lastHealthyAt    DateTime? @map("last_healthy_at")
+  lastErrorCode    Int?      @map("last_error_code")
+  lastErrorMessage String?   @map("last_error_message")
+  failureCount     Int       @default(0) @map("failure_count")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@map("api_status")
 }

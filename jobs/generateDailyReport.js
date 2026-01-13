@@ -17,8 +17,16 @@ const STORIES_PER_REPORT = 10;
 async function generateDailyReport(force = false) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  
+
   console.log(`Starting Daily Report Generation for ${today.toISOString()}`);
+
+  // 0. Check if Reddit API is restricted
+  const isRestricted = await redditService.isApiRestricted(prisma);
+  if (isRestricted) {
+    console.log('Reddit API is currently restricted. Skipping Daily Report generation.');
+    await prisma.$disconnect();
+    return;
+  }
 
   // 1. Check if report exists
   const existing = await prisma.dailyReport.findUnique({

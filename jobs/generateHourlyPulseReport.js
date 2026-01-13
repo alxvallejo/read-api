@@ -21,8 +21,16 @@ function getCurrentHour() {
 
 async function generateHourlyPulseReport(force = false) {
   const reportHour = getCurrentHour();
-  
+
   console.log(`Starting Hourly Pulse Report Generation for ${reportHour.toISOString()}`);
+
+  // 0. Check if Reddit API is restricted
+  const isRestricted = await redditService.isApiRestricted(prisma);
+  if (isRestricted) {
+    console.log('Reddit API is currently restricted. Skipping Hourly Pulse Report generation.');
+    await prisma.$disconnect();
+    return;
+  }
 
   // 1. Check if report exists
   const existing = await prisma.hourlyPulseReport.findUnique({

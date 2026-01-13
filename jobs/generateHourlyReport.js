@@ -67,8 +67,16 @@ function getCurrentHour() {
 
 async function generateHourlyReport(force = false) {
   const reportHour = getCurrentHour();
-  
+
   console.log(`Starting Hourly Report Generation for ${reportHour.toISOString()}`);
+
+  // 0. Check if Reddit API is restricted
+  const isRestricted = await redditService.isApiRestricted(prisma);
+  if (isRestricted) {
+    console.log('Reddit API is currently restricted. Skipping Hourly Report generation.');
+    await prisma.$disconnect();
+    return;
+  }
 
   // 1. Check if report exists
   const existing = await prisma.hourlyReport.findUnique({
