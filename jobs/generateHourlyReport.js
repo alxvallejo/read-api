@@ -132,7 +132,7 @@ async function generateHourlyReport(force = false) {
   for (const sub of selectedSubs) {
     try {
       console.log(`Fetching from r/${sub}...`);
-      const posts = await redditService.getTopPosts(sub, POSTS_PER_SUBREDDIT);
+      const posts = await redditService.getTopPosts(sub, POSTS_PER_SUBREDDIT, prisma);
       candidates.push(...posts.map(p => ({ ...p, subreddit: sub })));
     } catch (e) {
       console.error(`Error fetching r/${sub}:`, e.message);

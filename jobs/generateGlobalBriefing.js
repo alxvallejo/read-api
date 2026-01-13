@@ -78,7 +78,7 @@ async function generateGlobalBriefing(force = false) {
     
     for (const subreddit of subredditNames) {
       try {
-        const posts = await redditService.getTopPosts(subreddit, 5);
+        const posts = await redditService.getTopPosts(subreddit, 5, prisma);
         // Tag with category
         posts.forEach(p => {
           p._categoryId = category.id;
@@ -171,7 +171,7 @@ async function generateGlobalBriefing(force = false) {
     // Fetch top comment
     let topComment = null;
     try {
-      const comments = await redditService.getPostComments(post.id);
+      const comments = await redditService.getPostComments(post.id, prisma);
       if (comments.length > 0) {
         topComment = comments[0];
       }

@@ -506,3 +506,47 @@ model ApiStatus {
 
   @@map("api_status")
 }
+
+// ============ Cron Job Management (Admin) ============
+
+model CronJob {
+  id              String      @id @default(uuid())
+  name            String      @unique  // "global-briefing", "hourly-pulse", "daily-report"
+  displayName     String      @map("display_name")
+  description     String?
+  script          String      // Path to job script relative to project root
+  cronExpression  String      @map("cron_expression")
+  enabled         Boolean     @default(true)
+  lastRunAt       DateTime?   @map("last_run_at")
+  lastRunStatus   JobStatus?  @map("last_run_status")
+  lastRunDuration Int?        @map("last_run_duration")  // milliseconds
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  runHistory      CronJobRun[]
+
+  @@map("cron_jobs")
+}
+
+model CronJobRun {
+  id          String     @id @default(uuid())
+  jobId       String     @map("job_id")
+  startedAt   DateTime   @map("started_at")
+  completedAt DateTime?  @map("completed_at")
+  status      JobStatus
+  output      String?    // Truncated stdout/stderr
+  triggeredBy String     @map("triggered_by")  // "scheduled" | "manual:<username>"
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  job         CronJob    @relation(fields: [jobId], references: [id])
+
+  @@index([jobId, startedAt(sort: Desc)])
+  @@map("cron_job_runs")
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}

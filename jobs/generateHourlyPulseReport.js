@@ -75,7 +75,7 @@ async function generateHourlyPulseReport(force = false) {
 
   // 4. Fetch top posts from r/all (actual top Reddit posts)
   console.log('Fetching top posts from r/all...');
-  let candidates = await redditService.getTopPosts('all', 50);
+  let candidates = await redditService.getTopPosts('all', 50, prisma);
   
   // 5. Filter NSFW and excluded posts
   candidates = candidates.filter(p => {
@@ -96,7 +96,7 @@ async function generateHourlyPulseReport(force = false) {
     // Fetch top comment for this post
     let topComment = null;
     try {
-      const comments = await redditService.getPostComments(post.id);
+      const comments = await redditService.getPostComments(post.id, prisma);
       if (comments.length > 0) {
         // Get the top comment (already sorted by top)
         topComment = comments[0];

@@ -204,6 +204,15 @@ async function generateReport(req, res) {
   try {
     const { userId } = req.params;
 
+    // Check if Reddit API is restricted
+    const isRestricted = await redditService.isApiRestricted(prisma);
+    if (isRestricted) {
+      return res.status(503).json({
+        error: 'Reddit API is temporarily unavailable. Please try again later.',
+        restricted: true,
+      });
+    }
+
     // Get user's selected categories
     const selections = await prisma.userCategorySelection.findMany({
       where: { userId },
@@ -274,7 +283,7 @@ async function generateReport(req, res) {
     for (const subName of enabledSubreddits) {
       try {
         console.log(`  Fetching from r/${subName}...`);
-        const posts = await redditService.getTopPosts(subName, POSTS_PER_SUBREDDIT);
+        const posts = await redditService.getTopPosts(subName, POSTS_PER_SUBREDDIT, prisma);
         candidates.push(...posts.map(p => ({ ...p, subreddit: subName })));
       } catch (e) {
         console.error(`  Error fetching r/${subName}:`, e.message);
@@ -318,7 +327,7 @@ async function generateReport(req, res) {
       // Fetch top comment for this post
       let topComment = null;
       try {
-        const comments = await redditService.getPostComments(post.id);
+        const comments = await redditService.getPostComments(post.id, prisma);
         if (comments.length > 0) {
           topComment = comments[0];
         }

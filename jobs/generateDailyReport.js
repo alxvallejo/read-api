@@ -64,7 +64,7 @@ async function generateDailyReport(force = false) {
   for (const sub of TARGET_SUBREDDITS) {
     try {
       console.log(`Fetching from r/${sub}...`);
-      const posts = await redditService.getTopPosts(sub, 5); // Fetch top 5 from each
+      const posts = await redditService.getTopPosts(sub, 5, prisma); // Fetch top 5 from each
       candidates.push(...posts.map(p => ({ ...p, subreddit: sub })));
     } catch (e) {
       console.error(`Error fetching r/${sub}:`, e.message);
@@ -112,7 +112,7 @@ async function generateDailyReport(force = false) {
     // Fetch comments
     let comments = [];
     try {
-      comments = await redditService.getPostComments(post.id);
+      comments = await redditService.getPostComments(post.id, prisma);
     } catch (e) {
       console.error(`Error fetching comments for ${post.id}:`, e.message);
     }

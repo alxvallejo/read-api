@@ -1,6 +1,7 @@
 require('dotenv').config();
 const read = require('./controllers/readController.js');
 const redditProxy = require('./controllers/redditProxyController.js');
+const redditService = require('./services/redditService.js');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
@@ -8,9 +9,18 @@ const fs = require('fs');
 const express = require('express');
 const helmet = require('helmet');
 const https = require('https');
+const { PrismaClient } = require('@prisma/client');
+const { Pool } = require('pg');
+const { PrismaPg } = require('@prisma/adapter-pg');
 const app = express();
 const port = process.env.PORT || 3000;
 const nodeFetch = require('node-fetch');
+
+// Prisma client for API status tracking
+const connectionString = process.env.DATABASE_URL;
+const pool = new Pool({ connectionString });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 
 // Frontend SSR integration for dynamic share previews
 const FRONTEND_DIST_DIR = process.env.FRONTEND_DIST_DIR || null; // e.g. /var/www/reddzit-refresh/dist
@@ -57,6 +67,13 @@ function pickPreviewImage(post) {
 }
 
 async function fetchRedditPublic(fullname) {
+  // Check if API is currently restricted before making a call
+  const isRestricted = await redditService.isApiRestricted(prisma);
+  if (isRestricted) {
+    console.log('Reddit API restricted, skipping fetch for:', fullname);
+    return null;
+  }
+
   // Use app-only OAuth since Reddit blocks unauthenticated .json endpoints
   const accessToken = await redditProxy.getAppOnlyAccessToken();
   const endpoint = `https://oauth.reddit.com/by_id/${encodeURIComponent(fullname)}`;
@@ -66,7 +83,20 @@ async function fetchRedditPublic(fullname) {
       'User-Agent': process.env.USER_AGENT || 'Reddzit/1.0'
     }
   });
-  if (!r.ok) throw new Error('Reddit fetch failed: ' + r.status);
+
+  // Track API status based on response
+  if (!r.ok) {
+    const isRestrictedError = redditService.RESTRICTED_ERROR_CODES.includes(r.status);
+    if (isRestrictedError) {
+      console.error(`Reddit API restricted (${r.status}): ${r.statusText}`);
+      await redditService.recordApiStatus(prisma, false, r.status, r.statusText);
+    }
+    throw new Error('Reddit fetch failed: ' + r.status);
+  }
+
+  // Record successful API call
+  await redditService.recordApiStatus(prisma, true);
+
   const json = await r.json();
   const post = json && json.data && json.data.children && json.data.children[0] && json.data.children[0].data;
   return post || null;
@@ -206,6 +236,43 @@ app.get('/api/reddit/public/by_id/:fullname', redditProxy.getByIdPublic);
 app.get('/api/reddit/subreddits/popular', redditProxy.getPopularSubreddits);
 app.get('/api/reddit/subreddits/mine', redditProxy.getUserSubreddits); // Pro mode - requires auth
 app.get('/api/reddit/feed/rotating', redditProxy.getRotatingFeed);
+
+// Reddit API Status endpoint
+app.get('/api/status/reddit', async (req, res) => {
+  try {
+    const status = await prisma.apiStatus.findUnique({
+      where: { id: 'reddit' },
+    });
+
+    if (!status) {
+      // No status record = assume healthy
+      return res.json({
+        healthy: true,
+        message: 'API status unknown - no restrictions recorded',
+      });
+    }
+
+    const cooldownRemaining = status.isHealthy
+      ? 0
+      : Math.max(0, redditService.COOLDOWN_MS - (Date.now() - status.lastCheckedAt.getTime()));
+
+    res.json({
+      healthy: status.isHealthy,
+      lastCheckedAt: status.lastCheckedAt,
+      lastHealthyAt: status.lastHealthyAt,
+      lastErrorCode: status.lastErrorCode,
+      lastErrorMessage: status.lastErrorMessage,
+      failureCount: status.failureCount,
+      cooldownRemaining: Math.ceil(cooldownRemaining / 60000), // minutes
+      message: status.isHealthy
+        ? 'Reddit API is operational'
+        : `Reddit API restricted. Cooldown: ${Math.ceil(cooldownRemaining / 60000)} minutes remaining.`,
+    });
+  } catch (e) {
+    console.error('Error fetching API status:', e);
+    res.status(500).json({ error: 'Failed to fetch API status' });
+  }
+});
 
 // Category-Based Discover API (Pro Feature)
 app.get('/api/discover/categories', discoverController.getCategories);

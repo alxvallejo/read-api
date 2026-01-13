@@ -7,8 +7,8 @@ const REDDIT_CLIENT_SECRET = process.env.REDDIT_CLIENT_SECRET;
 // Error codes that indicate API access is restricted
 const RESTRICTED_ERROR_CODES = [401, 403, 429];
 
-// Cooldown period before retrying restricted API (30 minutes)
-const COOLDOWN_MS = 30 * 60 * 1000;
+// Cooldown period before retrying restricted API (3 hours)
+const COOLDOWN_MS = 3 * 60 * 60 * 1000;
 
 let accessToken = null;
 let tokenExpiresAt = 0;
@@ -61,12 +61,15 @@ async function fetchReddit(endpoint) {
   return response.json();
 }
 
-async function getTopPosts(subreddit, limit = 5) {
-  const data = await fetchReddit(`/r/${subreddit}/top?t=day&limit=${limit}`);
+async function getTopPosts(subreddit, limit = 5, prisma = null) {
+  const endpoint = `/r/${subreddit}/top?t=day&limit=${limit}`;
+  const data = prisma
+    ? await fetchRedditWithStatusTracking(endpoint, prisma)
+    : await fetchReddit(endpoint);
   return data.data.children.map(child => child.data);
 }
 
-async function getPostComments(articleId) {
+async function getPostComments(articleId, prisma = null) {
     // articleId should be without t3_ prefix for the endpoint usually,
     // but the permalink or /comments/id endpoint handles it.
     // If we have permalink, we can use that, but better to use /comments/{id}
@@ -76,7 +79,10 @@ async function getPostComments(articleId) {
     // Reddit API allows sorting.
     // GET /comments/article
 
-    const data = await fetchReddit(`/comments/${articleId}?sort=top&limit=20&depth=2`);
+    const endpoint = `/comments/${articleId}?sort=top&limit=20&depth=2`;
+    const data = prisma
+      ? await fetchRedditWithStatusTracking(endpoint, prisma)
+      : await fetchReddit(endpoint);
     // data is an array: [listing (post), listing (comments)]
     const comments = data[1].data.children.map(child => child.data).filter(c => c.body); // filter out 'more'
     return comments;
