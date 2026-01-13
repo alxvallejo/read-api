@@ -409,3 +409,84 @@ model DiscoverStory {
   @@index([redditPostId])
   @@map("discover_stories")
 }
+
+// ============ User & Subscription Management ============
+
+model User {
+  id              String    @id @default(uuid())
+  redditUsername  String    @unique @map("reddit_username")
+  email           String?
+  isPro           Boolean   @default(false) @map("is_pro")
+  proExpiresAt    DateTime? @map("pro_expires_at")
+  stripeCustomerId String?  @map("stripe_customer_id")
+  isAdmin         Boolean   @default(false) @map("is_admin")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([redditUsername])
+  @@index([stripeCustomerId])
+  @@map("users")
+}
+
+// ============ Global Briefing (Free Tier Content) ============
+
+model GlobalBriefing {
+  id              String              @id @default(uuid())
+  periodStart     DateTime            @unique @map("period_start")  // 6-hour windows: 0, 6, 12, 18 UTC
+  status          ReportStatus        @default(DRAFT)
+  title           String?
+  executiveSummary String?            @map("executive_summary")  // Premium AI narrative
+  generatedAt     DateTime            @map("generated_at")
+  publishedAt     DateTime?           @map("published_at")
+  llmModel        String?             @map("llm_model")  // "gpt-5.2"
+  llmCostCents    Int?                @map("llm_cost_cents")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  stories         GlobalBriefingStory[]
+
+  @@index([periodStart])
+  @@index([status])
+  @@map("global_briefings")
+}
+
+model GlobalBriefingStory {
+  id              String          @id @default(uuid())
+  briefingId      String          @map("briefing_id")
+  rank            Int
+  
+  // Reddit Source Fields
+  subreddit       String
+  redditPostId    String          @map("reddit_post_id")
+  redditPermalink String          @map("reddit_permalink")
+  title           String
+  postUrl         String?         @map("post_url")
+  imageUrl        String?         @map("image_url")
+  author          String?
+  score           Int             @default(0)
+  numComments     Int             @default(0) @map("num_comments")
+  createdUtc      DateTime?       @map("created_utc")
+  isSelfPost      Boolean         @default(false) @map("is_self_post")
+  
+  // LLM Outputs
+  summary         String?
+  sentimentLabel  String?         @map("sentiment_label")
+  topicTags       Json?           @map("topic_tags")
+  
+  // Top comment
+  topCommentAuthor  String?       @map("top_comment_author")
+  topCommentBody    String?       @map("top_comment_body")
+  topCommentScore   Int?          @map("top_comment_score")
+  
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  briefing        GlobalBriefing  @relation(fields: [briefingId], references: [id])
+
+  @@unique([briefingId, rank])
+  @@unique([briefingId, redditPostId])
+  @@index([briefingId, rank])
+  @@index([subreddit])
+  @@index([redditPostId])
+  @@map("global_briefing_stories")
+}

@@ -169,6 +169,9 @@ app.post('/getContent', (req, res) => {
 
 const dailyController = require('./controllers/dailyController.js');
 const discoverController = require('./controllers/discoverController.js');
+const briefingController = require('./controllers/briefingController.js');
+const userController = require('./controllers/userController.js');
+const adminController = require('./controllers/adminController.js');
 
 // Daily Pulse API
 app.get('/api/daily/latest', dailyController.getLatestReport);
@@ -212,6 +215,25 @@ app.post('/api/discover/user/:userId/subreddits/toggle', discoverController.togg
 app.post('/api/discover/user/:userId/generate', discoverController.generateReport);
 app.get('/api/discover/user/:userId/reports', discoverController.getUserReports);
 app.get('/api/discover/user/:userId/reports/latest', discoverController.getLatestReport);
+
+// Global Briefing API (Free tier)
+app.get('/api/briefing/latest', briefingController.getLatestBriefing);
+app.get('/api/briefing/history', briefingController.getBriefingHistory);
+app.get('/api/briefing/:id', briefingController.getBriefingById);
+
+// User API
+app.post('/api/user/sync', userController.syncUser);
+app.get('/api/user/:redditId', userController.getUser);
+app.get('/api/user/:redditId/subscription', userController.getSubscriptionStatus);
+
+// Admin API (protected)
+app.get('/api/admin/stats', adminController.requireAdmin, adminController.getStats);
+app.get('/api/admin/users', adminController.requireAdmin, adminController.listUsers);
+app.post('/api/admin/users/:redditId/pro', adminController.requireAdmin, adminController.setUserPro);
+app.post('/api/admin/users/:redditId/admin', adminController.requireAdmin, adminController.setUserAdmin);
+app.get('/api/admin/briefings', adminController.requireAdmin, adminController.listBriefings);
+app.post('/api/admin/briefings/:id/regenerate', adminController.requireAdmin, adminController.regenerateBriefing);
+app.delete('/api/admin/briefings/:id', adminController.requireAdmin, adminController.deleteBriefing);
 
 // Dynamic share preview route (inject OG/Twitter tags)
 app.get('/p/:fullname', async (req, res) => {
