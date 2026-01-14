@@ -4,7 +4,7 @@ require('dotenv').config();
 const ENABLED = {
   'read-api': true,
   'global-briefing': true,
-  'hourly-pulse': true,
+  'top-posts': true,
   'daily-report': false,  // Disabled
 };
 
@@ -48,10 +48,10 @@ const allApps = [
     },
   },
 
-  // Hourly Pulse - runs every hour (top posts from r/all)
+  // Top Posts - runs every hour (top posts from r/all via public JSON, no OAuth)
   {
-    name: 'hourly-pulse',
-    script: 'jobs/generateHourlyPulseReport.js',
+    name: 'top-posts',
+    script: 'jobs/generateTopPostsReport.js',
     cron_restart: '0 6-23 * * *', // Every hour from 6am-11pm UTC (skip dead hours)
     autorestart: false,
     watch: false,
