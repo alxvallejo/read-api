@@ -58,7 +58,7 @@ Writing rules:
 - Lead with the most interesting or important fact - no throat-clearing
 - Do NOT repeat or paraphrase the post title or obvious headline facts; assume the user can already see the title
 - Focus on context, implications, what's new, who/why/what it means, not re-stating the headline
-- NEVER use phrases like: "The article discusses", "This piece explores", "The author argues", "According to the article", "The post details"
+- NEVER use phrases like: "The article discusses", "This piece explores", "The author argues", "According to the article", "The post details", "Discussion around", "The discussion around"
 - Use active voice: "Tesla recalled 500k vehicles" not "500k vehicles were recalled by Tesla"
 - Write as if stating facts directly, not describing an article about facts
 - Match the tone: punchy for breaking news, substantive for analysis
@@ -251,7 +251,7 @@ Score: ${story.score} | Comments: ${story.num_comments}`;
 function getMockResponse(story) {
   const isControversial = story.num_comments > story.score / 2;
   return {
-    summary: `Discussion around "${story.title}" is still developing.`,
+    summary: `This story is generating significant attention on Reddit.`,
     sentimentLabel: isControversial ? 'DIVIDED' : 'UNCERTAIN',
     takeaways: [],
     topicTags: [],
