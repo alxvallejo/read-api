@@ -15,9 +15,9 @@ const prisma = new PrismaClient({ adapter });
 
 const cronJobs = [
   {
-    name: 'global-briefing',
-    displayName: 'Global Briefing',
-    description: 'Generates briefing from top posts across all categories every 6 hours',
+    name: 'discover',
+    displayName: 'Discover',
+    description: 'Generates briefing for Discover tab every 6 hours',
     script: 'jobs/generateGlobalBriefing.js',
     cronExpression: '0 0,6,12,18 * * *',
     enabled: true,

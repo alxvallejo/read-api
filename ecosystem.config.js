@@ -3,7 +3,7 @@ require('dotenv').config();
 // Toggle jobs on/off here
 const ENABLED = {
   'read-api': true,
-  'global-briefing': true,
+  'discover': true,
   'top-posts': true,
   'daily-report': false,  // Disabled
 };
@@ -34,9 +34,9 @@ const allApps = [
     },
   },
 
-  // Global Briefing - runs every 6 hours (0:00, 6:00, 12:00, 18:00 UTC)
+  // Discover - runs every 6 hours (0:00, 6:00, 12:00, 18:00 UTC)
   {
-    name: 'global-briefing',
+    name: 'discover',
     script: 'jobs/generateGlobalBriefing.js',
     cron_restart: '0 0,6,12,18 * * *',
     autorestart: false,
