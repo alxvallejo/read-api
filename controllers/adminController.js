@@ -456,6 +456,50 @@ function isValidCronExpression(expr) {
   return parts.length === 5 && parts.every(part => /^[\d,\-\*\/]+$/.test(part));
 }
 
+// ============ Reddit API Usage ============
+
+/**
+ * GET /api/admin/reddit-usage
+ * Get Reddit API usage statistics
+ */
+async function getRedditUsage(req, res) {
+  try {
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    const [lastHour, last24Hours, apiStatus] = await Promise.all([
+      prisma.redditApiLog.count({
+        where: { createdAt: { gte: oneHourAgo } }
+      }),
+      prisma.redditApiLog.count({
+        where: { createdAt: { gte: oneDayAgo } }
+      }),
+      prisma.apiStatus.findUnique({ where: { id: 'reddit' } }),
+    ]);
+
+    const limit = 60; // Reddit's rate limit per hour
+    const remaining = Math.max(0, limit - lastHour);
+
+    res.json({
+      lastHour,
+      last24Hours,
+      limit,
+      remaining,
+      percentUsed: Math.round((lastHour / limit) * 100),
+      apiStatus: apiStatus ? {
+        isHealthy: apiStatus.isHealthy,
+        lastCheckedAt: apiStatus.lastCheckedAt,
+        lastErrorCode: apiStatus.lastErrorCode,
+        failureCount: apiStatus.failureCount,
+      } : null,
+    });
+  } catch (error) {
+    console.error('Error fetching Reddit usage:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 module.exports = {
   requireAdmin,
   getStats,
@@ -470,4 +514,6 @@ module.exports = {
   updateJob,
   triggerJob,
   getJobRuns,
+  // Reddit API Usage
+  getRedditUsage,
 };

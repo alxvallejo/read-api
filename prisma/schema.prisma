@@ -507,6 +507,17 @@ model ApiStatus {
   @@map("api_status")
 }
 
+// Reddit API request logging for rate limit tracking
+model RedditApiLog {
+  id        String   @id @default(uuid())
+  endpoint  String
+  status    Int      // HTTP status code
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("reddit_api_logs")
+}
+
 // ============ Cron Job Management (Admin) ============
 
 model CronJob {

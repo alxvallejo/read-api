@@ -320,6 +320,9 @@ app.patch('/api/admin/jobs/:name', adminController.requireAdmin, adminController
 app.post('/api/admin/jobs/:name/trigger', adminController.requireAdmin, adminController.triggerJob);
 app.get('/api/admin/jobs/:name/runs', adminController.requireAdmin, adminController.getJobRuns);
 
+// Reddit API Usage
+app.get('/api/admin/reddit-usage', adminController.requireAdmin, adminController.getRedditUsage);
+
 // Dynamic share preview route (inject OG/Twitter tags)
 app.get('/p/:fullname', async (req, res) => {
   try {

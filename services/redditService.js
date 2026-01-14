@@ -193,8 +193,21 @@ async function isApiRestricted(prisma) {
   }
 }
 
+// Log API request (non-blocking)
+async function logApiRequest(prisma, endpoint, status) {
+  if (!prisma) return;
+  try {
+    await prisma.redditApiLog.create({
+      data: { endpoint, status }
+    });
+  } catch (e) {
+    console.error('Failed to log API request:', e.message);
+  }
+}
+
 // Wrapper for fetchReddit that records API status on restricted errors
 async function fetchRedditWithStatusTracking(endpoint, prisma) {
+  let status = 0;
   try {
     const token = await getAccessToken();
     const response = await fetch(`https://oauth.reddit.com${endpoint}`, {
@@ -203,6 +216,8 @@ async function fetchRedditWithStatusTracking(endpoint, prisma) {
         'User-Agent': UA,
       },
     });
+
+    status = response.status;
 
     if (!response.ok) {
       const isRestricted = RESTRICTED_ERROR_CODES.includes(response.status);
@@ -224,6 +239,9 @@ async function fetchRedditWithStatusTracking(endpoint, prisma) {
   } catch (e) {
     // Re-throw the error after recording status
     throw e;
+  } finally {
+    // Log request regardless of success/failure (non-blocking)
+    logApiRequest(prisma, endpoint, status).catch(() => {});
   }
 }
 
