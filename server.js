@@ -322,6 +322,8 @@ app.get('/api/admin/jobs/:name/runs', adminController.requireAdmin, adminControl
 
 // Reddit API Usage
 app.get('/api/admin/reddit-usage', adminController.requireAdmin, adminController.getRedditUsage);
+app.get('/api/admin/reddit-usage/logs', adminController.requireAdmin, adminController.getRedditUsageLogs);
+app.delete('/api/admin/reddit-usage/logs', adminController.requireAdmin, adminController.deleteRedditUsageLogs);
 
 // Dynamic share preview route (inject OG/Twitter tags)
 app.get('/p/:fullname', async (req, res) => {

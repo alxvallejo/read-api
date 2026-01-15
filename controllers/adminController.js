@@ -500,6 +500,41 @@ async function getRedditUsage(req, res) {
   }
 }
 
+/**
+ * GET /api/admin/reddit-usage/logs
+ * Get detailed Reddit API request logs for the last hour
+ */
+async function getRedditUsageLogs(req, res) {
+  try {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+
+    const logs = await prisma.redditApiLog.findMany({
+      where: { createdAt: { gte: oneHourAgo } },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    res.json({ logs });
+  } catch (error) {
+    console.error('Error fetching Reddit usage logs:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+/**
+ * DELETE /api/admin/reddit-usage/logs
+ * Delete all Reddit API request logs
+ */
+async function deleteRedditUsageLogs(req, res) {
+  try {
+    const result = await prisma.redditApiLog.deleteMany({});
+    res.json({ success: true, deleted: result.count });
+  } catch (error) {
+    console.error('Error deleting Reddit usage logs:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 module.exports = {
   requireAdmin,
   getStats,
@@ -516,4 +551,6 @@ module.exports = {
   getJobRuns,
   // Reddit API Usage
   getRedditUsage,
+  getRedditUsageLogs,
+  deleteRedditUsageLogs,
 };
