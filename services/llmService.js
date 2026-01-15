@@ -251,7 +251,7 @@ Score: ${story.score} | Comments: ${story.num_comments}`;
 function getMockResponse(story) {
   const isControversial = story.num_comments > story.score / 2;
   return {
-    summary: `This story is generating significant attention on Reddit.`,
+    summary: null, // No generic placeholder - let the title speak for itself
     sentimentLabel: isControversial ? 'DIVIDED' : 'UNCERTAIN',
     takeaways: [],
     topicTags: [],
