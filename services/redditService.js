@@ -4,6 +4,9 @@ const UA = process.env.USER_AGENT || 'Reddzit/1.0';
 const REDDIT_CLIENT_ID = process.env.REDDIT_CLIENT_ID;
 const REDDIT_CLIENT_SECRET = process.env.REDDIT_CLIENT_SECRET;
 
+// Feature flag to disable comment fetching (reduces API calls)
+const SKIP_COMMENTS = process.env.SKIP_REDDIT_COMMENTS === 'true';
+
 // Error codes that indicate API access is restricted
 const RESTRICTED_ERROR_CODES = [401, 403, 429];
 
@@ -70,6 +73,11 @@ async function getTopPosts(subreddit, limit = 5, prisma = null) {
 }
 
 async function getPostComments(articleId, prisma = null) {
+    // Skip comment fetching if disabled (to reduce API calls)
+    if (SKIP_COMMENTS) {
+      return [];
+    }
+
     // articleId should be without t3_ prefix for the endpoint usually,
     // but the permalink or /comments/id endpoint handles it.
     // If we have permalink, we can use that, but better to use /comments/{id}

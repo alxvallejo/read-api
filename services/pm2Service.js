@@ -75,6 +75,23 @@ async function applyJobConfig(jobConfig) {
 }
 
 /**
+ * Delete a PM2 process by name
+ * @param {string} name - Process name to delete
+ */
+async function deleteProcess(name) {
+  await pm2Connect();
+  try {
+    await pm2Delete(name);
+    return { success: true };
+  } catch (e) {
+    // Process might not exist
+    return { success: false, error: e.message };
+  } finally {
+    pm2Disconnect();
+  }
+}
+
+/**
  * Trigger a job to run immediately
  * @param {string} name - Job name (for logging)
  * @param {string} script - Script path relative to project root
@@ -127,4 +144,5 @@ module.exports = {
   getProcessList,
   applyJobConfig,
   triggerJob,
+  deleteProcess,
 };

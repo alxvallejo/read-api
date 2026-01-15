@@ -425,6 +425,20 @@ const pm2Service = require('./services/pm2Service');
 async function syncCronJobs() {
   try {
     const jobs = await prisma.cronJob.findMany();
+    const dbJobNames = new Set(jobs.map(j => j.name));
+
+    // Clean up orphaned PM2 job processes (exist in PM2 but not in database)
+    const pm2Processes = await pm2Service.getProcessList();
+    const knownJobPrefixes = ['daily-report', 'discover', 'top-posts', 'hourly-pulse', 'global-briefing'];
+
+    for (const proc of pm2Processes) {
+      // Check if this is a job process (not read-api itself) that's not in DB
+      if (knownJobPrefixes.includes(proc.name) && !dbJobNames.has(proc.name)) {
+        console.log(`[CronSync] Removing orphaned job: ${proc.name}`);
+        await pm2Service.deleteProcess(proc.name);
+      }
+    }
+
     if (jobs.length === 0) {
       console.log('[CronSync] No cron jobs found in database. Seed them first.');
       return;

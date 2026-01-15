@@ -294,6 +294,8 @@ const redditProxy = {
         clientIdLength: REDDIT_CLIENT_ID?.length,
         redirectUri: REDDIT_REDIRECT_URI,
         codeLength: code?.length,
+        codePreview: code?.slice(0, 10) + '...',
+        bodyParams: params.toString(),
       });
 
       const r = await fetch('https://www.reddit.com/api/v1/access_token', {
