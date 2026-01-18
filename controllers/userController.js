@@ -20,20 +20,34 @@ async function syncUser(req, res) {
       return res.status(400).json({ error: 'redditId and redditUsername required' });
     }
 
-    // Upsert user - create if new, update username if changed
-    const user = await prisma.user.upsert({
-      where: { redditId },
-      create: {
-        redditId,
-        redditUsername,
-        isPro: false,
-        isAdmin: false,
-      },
-      update: {
-        redditUsername, // Update in case they changed username
-        lastLoginAt: new Date(),
-      },
+    // First check if user exists by username (for legacy users without redditId)
+    let user = await prisma.user.findUnique({
+      where: { redditUsername },
     });
+
+    if (user) {
+      // Update existing user with redditId if missing
+      user = await prisma.user.update({
+        where: { redditUsername },
+        data: {
+          redditId: user.redditId || redditId,
+        },
+      });
+    } else {
+      // Try to find by redditId or create new
+      user = await prisma.user.upsert({
+        where: { redditId },
+        create: {
+          redditId,
+          redditUsername,
+          isPro: false,
+          isAdmin: false,
+        },
+        update: {
+          redditUsername, // Update in case they changed username
+        },
+      });
+    }
 
     res.json({
       id: user.id,
@@ -51,13 +65,14 @@ async function syncUser(req, res) {
 
 /**
  * GET /api/user/:redditId
- * Get user info by Reddit ID
+ * Get user info by Reddit ID (or username as fallback)
  */
 async function getUser(req, res) {
   try {
     const { redditId } = req.params;
 
-    const user = await prisma.user.findUnique({
+    // Try to find by redditId first, then fallback to username
+    let user = await prisma.user.findUnique({
       where: { redditId },
       select: {
         id: true,
@@ -70,6 +85,22 @@ async function getUser(req, res) {
       },
     });
 
+    // Fallback to username lookup for legacy users
+    if (!user) {
+      user = await prisma.user.findUnique({
+        where: { redditUsername: redditId },
+        select: {
+          id: true,
+          redditId: true,
+          redditUsername: true,
+          isPro: true,
+          proExpiresAt: true,
+          isAdmin: true,
+          createdAt: true,
+        },
+      });
+    }
+
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -78,10 +109,10 @@ async function getUser(req, res) {
     if (user.isPro && user.proExpiresAt && user.proExpiresAt < new Date()) {
       // Pro expired - update in background
       prisma.user.update({
-        where: { redditId },
+        where: { id: user.id },
         data: { isPro: false }
       }).catch(console.error);
-      
+
       user.isPro = false;
     }
 
@@ -94,13 +125,14 @@ async function getUser(req, res) {
 
 /**
  * GET /api/user/:redditId/subscription
- * Check subscription status for a user
+ * Check subscription status for a user (by redditId or username)
  */
 async function getSubscriptionStatus(req, res) {
   try {
     const { redditId } = req.params;
 
-    const user = await prisma.user.findUnique({
+    // Try to find by redditId first, then fallback to username
+    let user = await prisma.user.findUnique({
       where: { redditId },
       select: {
         isPro: true,
@@ -109,13 +141,25 @@ async function getSubscriptionStatus(req, res) {
       },
     });
 
+    // Fallback to username lookup for legacy users
+    if (!user) {
+      user = await prisma.user.findUnique({
+        where: { redditUsername: redditId },
+        select: {
+          isPro: true,
+          proExpiresAt: true,
+          stripeCustomerId: true,
+        },
+      });
+    }
+
     if (!user) {
       return res.json({ isPro: false, hasAccount: false });
     }
 
     // Check expiration
     const isExpired = user.proExpiresAt && user.proExpiresAt < new Date();
-    
+
     res.json({
       isPro: user.isPro && !isExpired,
       proExpiresAt: user.proExpiresAt,

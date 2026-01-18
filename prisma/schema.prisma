@@ -414,6 +414,7 @@ model DiscoverStory {
 
 model User {
   id              String    @id @default(uuid())
+  redditId        String?   @unique @map("reddit_id")
   redditUsername  String    @unique @map("reddit_username")
   email           String?
   isPro           Boolean   @default(false) @map("is_pro")
