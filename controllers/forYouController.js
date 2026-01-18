@@ -2,6 +2,11 @@
 const { PrismaClient } = require('@prisma/client');
 const { Pool } = require('pg');
 const { PrismaPg } = require('@prisma/adapter-pg');
+const OpenAI = require('openai');
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 const connectionString = process.env.DATABASE_URL;
 const pool = new Pool({ connectionString });
@@ -327,10 +332,188 @@ async function toggleStar(req, res) {
   }
 }
 
+// POST /api/foryou/persona/refresh
+async function refreshPersona(req, res) {
+  try {
+    const token = extractToken(req);
+    if (!token) {
+      return res.status(401).json({ error: 'Authorization required' });
+    }
+
+    const { user } = await getUserFromToken(token);
+
+    // Fetch user's saved posts from Reddit (up to 50)
+    const savedResponse = await fetch('https://oauth.reddit.com/user/me/saved?limit=50', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!savedResponse.ok) {
+      return res.status(502).json({ error: 'Failed to fetch saved posts from Reddit' });
+    }
+
+    const savedData = await savedResponse.json();
+    const posts = savedData.data?.children || [];
+
+    if (posts.length === 0) {
+      return res.status(400).json({ error: 'No saved posts found to analyze' });
+    }
+
+    // Take up to 30 posts for analysis
+    const postsToAnalyze = posts.slice(0, 30);
+
+    // Build context for LLM analysis
+    const postSummaries = postsToAnalyze.map((item, i) => {
+      const post = item.data;
+      return `${i + 1}. r/${post.subreddit} - "${post.title}"`;
+    }).join('\n');
+
+    const subredditCounts = {};
+    postsToAnalyze.forEach(item => {
+      const sub = item.data.subreddit;
+      subredditCounts[sub] = (subredditCounts[sub] || 0) + 1;
+    });
+
+    const subredditContext = Object.entries(subredditCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => `r/${name}: ${count} posts`)
+      .join(', ');
+
+    const PERSONA_PROMPT = `You are an AI assistant analyzing a user's Reddit saved posts to understand their interests. Based on the following saved posts, create a user persona profile.
+
+Saved Posts:
+${postSummaries}
+
+Subreddit Distribution: ${subredditContext}
+
+Analyze these posts and respond with valid JSON only:
+{
+  "keywords": ["5-10 specific interest keywords based on their saved content"],
+  "topics": ["3-5 broad topic areas they're interested in"],
+  "subredditAffinities": [{"name": "subreddit_name", "weight": 0.0-1.0}],
+  "contentPreferences": ["content types they prefer like 'news', 'discussions', 'tutorials', 'memes', 'analysis', etc."]
+}
+
+Guidelines:
+- keywords should be specific and actionable (e.g., "machine learning", "sourdough baking", "home automation")
+- topics should be broader categories (e.g., "Technology", "Cooking", "DIY")
+- subredditAffinities should include subreddits they'd likely enjoy, with weights based on how well they match (1.0 = perfect match)
+- Include both subreddits from their saved posts AND related subreddits they might enjoy
+- contentPreferences should reflect the type of content they engage with`;
+
+    // Check if OpenAI API key is configured
+    if (!process.env.OPENAI_API_KEY) {
+      console.log('OPENAI_API_KEY not set, using mock persona');
+      const mockPersona = {
+        keywords: ['reddit', 'saved posts'],
+        topics: ['General Interest'],
+        subredditAffinities: Object.entries(subredditCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([name, count]) => ({ name, weight: Math.min(1, count / 5) })),
+        contentPreferences: ['discussions']
+      };
+
+      const persona = await prisma.userPersona.upsert({
+        where: { userId: user.id },
+        update: {
+          keywords: mockPersona.keywords,
+          topics: mockPersona.topics,
+          subredditAffinities: mockPersona.subredditAffinities,
+          contentPreferences: mockPersona.contentPreferences
+        },
+        create: {
+          userId: user.id,
+          keywords: mockPersona.keywords,
+          topics: mockPersona.topics,
+          subredditAffinities: mockPersona.subredditAffinities,
+          contentPreferences: mockPersona.contentPreferences
+        }
+      });
+
+      return res.json({
+        persona: {
+          keywords: persona.keywords,
+          topics: persona.topics,
+          subredditAffinities: persona.subredditAffinities,
+          contentPreferences: persona.contentPreferences
+        },
+        lastRefreshedAt: persona.updatedAt.toISOString(),
+        postsAnalyzed: postsToAnalyze.length
+      });
+    }
+
+    // Call OpenAI for persona analysis
+    console.log(`Generating persona for user ${user.id} based on ${postsToAnalyze.length} posts`);
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'user', content: PERSONA_PROMPT }
+      ],
+      temperature: 0.7,
+      max_tokens: 1000,
+      response_format: { type: 'json_object' }
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('Empty response from OpenAI');
+    }
+
+    const parsed = JSON.parse(content);
+
+    // Validate and sanitize the response
+    const personaData = {
+      keywords: Array.isArray(parsed.keywords) ? parsed.keywords.slice(0, 10) : [],
+      topics: Array.isArray(parsed.topics) ? parsed.topics.slice(0, 5) : [],
+      subredditAffinities: Array.isArray(parsed.subredditAffinities)
+        ? parsed.subredditAffinities.map(a => ({
+            name: String(a.name || '').replace(/^r\//, ''),
+            weight: Math.min(1, Math.max(0, Number(a.weight) || 0.5))
+          }))
+        : [],
+      contentPreferences: Array.isArray(parsed.contentPreferences) ? parsed.contentPreferences : []
+    };
+
+    // Upsert the UserPersona record
+    const persona = await prisma.userPersona.upsert({
+      where: { userId: user.id },
+      update: {
+        keywords: personaData.keywords,
+        topics: personaData.topics,
+        subredditAffinities: personaData.subredditAffinities,
+        contentPreferences: personaData.contentPreferences
+      },
+      create: {
+        userId: user.id,
+        keywords: personaData.keywords,
+        topics: personaData.topics,
+        subredditAffinities: personaData.subredditAffinities,
+        contentPreferences: personaData.contentPreferences
+      }
+    });
+
+    return res.json({
+      persona: {
+        keywords: persona.keywords,
+        topics: persona.topics,
+        subredditAffinities: persona.subredditAffinities,
+        contentPreferences: persona.contentPreferences
+      },
+      lastRefreshedAt: persona.updatedAt.toISOString(),
+      postsAnalyzed: postsToAnalyze.length
+    });
+  } catch (error) {
+    console.error('refreshPersona error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 module.exports = {
   getPersona,
   getCurated,
   recordAction,
   getSettings,
-  toggleStar
+  toggleStar,
+  refreshPersona
 };

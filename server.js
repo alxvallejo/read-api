@@ -308,6 +308,7 @@ app.get('/api/user/:redditId/subscription', userController.getSubscriptionStatus
 
 // For You API
 app.get('/api/foryou/persona', forYouController.getPersona);
+app.post('/api/foryou/persona/refresh', forYouController.refreshPersona);
 app.get('/api/foryou/curated', forYouController.getCurated);
 app.post('/api/foryou/action', forYouController.recordAction);
 app.get('/api/foryou/settings', forYouController.getSettings);
