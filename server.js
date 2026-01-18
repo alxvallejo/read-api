@@ -203,6 +203,7 @@ const rssService = require('./services/rssService.js');
 const briefingController = require('./controllers/briefingController.js');
 const userController = require('./controllers/userController.js');
 const adminController = require('./controllers/adminController.js');
+const forYouController = require('./controllers/forYouController');
 
 // Daily Pulse API
 app.get('/api/daily/latest', dailyController.getLatestReport);
@@ -304,6 +305,13 @@ app.get('/api/briefing/:id', briefingController.getBriefingById);
 app.post('/api/user/sync', userController.syncUser);
 app.get('/api/user/:redditId', userController.getUser);
 app.get('/api/user/:redditId/subscription', userController.getSubscriptionStatus);
+
+// For You API
+app.get('/api/foryou/persona', forYouController.getPersona);
+app.get('/api/foryou/curated', forYouController.getCurated);
+app.post('/api/foryou/action', forYouController.recordAction);
+app.get('/api/foryou/settings', forYouController.getSettings);
+app.post('/api/foryou/settings/star', forYouController.toggleStar);
 
 // Admin API (protected)
 app.get('/api/admin/stats', adminController.requireAdmin, adminController.getStats);
