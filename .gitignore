@@ -18,3 +18,4 @@ keytmp.pem
 
 /generated/prisma
 generated/
+.worktrees/
