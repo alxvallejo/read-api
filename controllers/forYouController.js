@@ -510,6 +510,131 @@ Guidelines:
   }
 }
 
+// POST /api/foryou/report/generate
+async function generateReport(req, res) {
+  try {
+    // a. Extract and validate the Bearer token
+    const token = extractToken(req);
+    if (!token) {
+      return res.status(401).json({ error: 'Authorization required' });
+    }
+
+    const { user } = await getUserFromToken(token);
+
+    // b. Get the selected model from request body
+    const { model: selectedModel } = req.body;
+    const validModels = ['gpt-4o-mini', 'gpt-4o', 'gpt-5.2'];
+    const model = validModels.includes(selectedModel) ? selectedModel : 'gpt-4o-mini';
+
+    // c. Get user's saved curated posts (action = SAVED)
+    const savedPosts = await prisma.curatedPost.findMany({
+      where: {
+        userId: user.id,
+        action: 'SAVED'
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // d. If no saved posts, return 400 error
+    if (savedPosts.length === 0) {
+      return res.status(400).json({ error: 'No saved posts to generate report from. Save some posts first!' });
+    }
+
+    // e. Build a prompt asking the LLM to create a reading digest
+    const postSummaries = savedPosts.map((post, i) => {
+      return `${i + 1}. r/${post.subreddit} - "${post.title}"${post.url ? ` (${post.url})` : ''}`;
+    }).join('\n');
+
+    const REPORT_PROMPT = `You are creating a personalized reading digest for a user based on their saved Reddit posts. Create an engaging, well-organized report that helps them get the most value from their curated reading list.
+
+Saved Posts:
+${postSummaries}
+
+Create a reading digest with the following structure:
+
+1. **Group posts by theme/topic** (NOT by subreddit) - Find common themes across different subreddits and organize posts into logical groups
+2. **Provide brief summaries for each group** - Explain what connects the posts and what the user might learn
+3. **Highlight the most interesting finds** - Call out 2-3 posts that seem particularly valuable or noteworthy
+4. **Suggest a reading order** - If applicable, suggest an order that builds knowledge progressively
+
+Use markdown formatting for readability:
+- Use headers (##) for theme groups
+- Use bullet points for post lists within groups
+- Use **bold** for emphasis on key insights
+- Include the subreddit in parentheses after each post title
+
+Keep the tone friendly and helpful. Make it feel like a personalized newsletter.`;
+
+    // f. Call OpenAI with the selected model
+    let reportContent;
+
+    if (!process.env.OPENAI_API_KEY) {
+      console.log('OPENAI_API_KEY not set, using mock report');
+      reportContent = `# Your Reading Digest
+
+## Posts to Review
+
+${savedPosts.map((p, i) => `${i + 1}. **${p.title}** (r/${p.subreddit})`).join('\n')}
+
+---
+*Note: This is a placeholder report. Configure OPENAI_API_KEY for AI-generated digests.*`;
+    } else {
+      console.log(`Generating report for user ${user.id} with ${savedPosts.length} posts using ${model}`);
+
+      const response = await openai.chat.completions.create({
+        model: model,
+        messages: [
+          { role: 'user', content: REPORT_PROMPT }
+        ],
+        temperature: 0.7,
+        max_tokens: 2000
+      });
+
+      reportContent = response.choices[0]?.message?.content;
+      if (!reportContent) {
+        throw new Error('Empty response from OpenAI');
+      }
+    }
+
+    // g. Save the report to ForYouReport table
+    const report = await prisma.forYouReport.create({
+      data: {
+        userId: user.id,
+        model: model,
+        postCount: savedPosts.length,
+        content: reportContent,
+        status: 'PUBLISHED',
+        generatedAt: new Date()
+      }
+    });
+
+    // h. Mark the saved posts as ALREADY_READ (they've been processed)
+    await prisma.curatedPost.updateMany({
+      where: {
+        userId: user.id,
+        action: 'SAVED'
+      },
+      data: {
+        action: 'ALREADY_READ'
+      }
+    });
+
+    // i. Return the report
+    return res.json({
+      report: {
+        id: report.id,
+        content: report.content,
+        model: report.model,
+        postCount: report.postCount,
+        generatedAt: report.generatedAt.toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('generateReport error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 // GET /api/foryou/feed
 async function getFeed(req, res) {
   try {
@@ -673,5 +798,6 @@ module.exports = {
   getSettings,
   toggleStar,
   refreshPersona,
-  getFeed
+  getFeed,
+  generateReport
 };
