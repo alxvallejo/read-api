@@ -313,6 +313,7 @@ app.get('/api/foryou/curated', forYouController.getCurated);
 app.post('/api/foryou/action', forYouController.recordAction);
 app.get('/api/foryou/settings', forYouController.getSettings);
 app.post('/api/foryou/settings/star', forYouController.toggleStar);
+app.get('/api/foryou/feed', forYouController.getFeed);
 
 // Admin API (protected)
 app.get('/api/admin/stats', adminController.requireAdmin, adminController.getStats);

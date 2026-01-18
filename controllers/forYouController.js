@@ -3,6 +3,7 @@ const { PrismaClient } = require('@prisma/client');
 const { Pool } = require('pg');
 const { PrismaPg } = require('@prisma/adapter-pg');
 const OpenAI = require('openai');
+const redditService = require('../services/redditService');
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -509,11 +510,168 @@ Guidelines:
   }
 }
 
+// GET /api/foryou/feed
+async function getFeed(req, res) {
+  try {
+    // a. Extract and validate the Bearer token
+    const token = extractToken(req);
+    if (!token) {
+      return res.status(401).json({ error: 'Authorization required' });
+    }
+
+    const { user } = await getUserFromToken(token);
+
+    // b. Get the user's persona for subreddit recommendations
+    const persona = await prisma.userPersona.findUnique({
+      where: { userId: user.id }
+    });
+
+    // c. Get starred subreddits (boosted priority)
+    const stars = await prisma.userSubredditStar.findMany({
+      where: { userId: user.id, starred: true }
+    });
+    const starredSubreddits = stars.map(s => s.subreddit);
+
+    // d. Get already curated post IDs to exclude
+    const curatedPosts = await prisma.curatedPost.findMany({
+      where: { userId: user.id },
+      select: { redditPostId: true }
+    });
+    const curatedPostIds = new Set(curatedPosts.map(p => p.redditPostId));
+
+    // e. Fetch user's subscriptions from Reddit
+    let userSubscriptions = [];
+    try {
+      const subsResponse = await fetch('https://oauth.reddit.com/subreddits/mine/subscriber?limit=100', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (subsResponse.ok) {
+        const subsData = await subsResponse.json();
+        userSubscriptions = (subsData.data?.children || []).map(c => c.data.display_name);
+      }
+    } catch (e) {
+      console.error('Failed to fetch user subscriptions:', e.message);
+    }
+
+    // f. Build a combined list of subreddits (starred first, then persona affinities, then subscriptions)
+    const subredditSet = new Set();
+    const orderedSubreddits = [];
+
+    // Add starred subreddits first (highest priority)
+    for (const sub of starredSubreddits) {
+      if (!subredditSet.has(sub)) {
+        subredditSet.add(sub);
+        orderedSubreddits.push({ name: sub, starred: true });
+      }
+    }
+
+    // Add persona affinities (sorted by weight)
+    if (persona && Array.isArray(persona.subredditAffinities)) {
+      const sortedAffinities = [...persona.subredditAffinities].sort((a, b) => (b.weight || 0) - (a.weight || 0));
+      for (const affinity of sortedAffinities) {
+        if (!subredditSet.has(affinity.name)) {
+          subredditSet.add(affinity.name);
+          orderedSubreddits.push({ name: affinity.name, starred: false });
+        }
+      }
+    }
+
+    // Add user subscriptions
+    for (const sub of userSubscriptions) {
+      if (!subredditSet.has(sub)) {
+        subredditSet.add(sub);
+        orderedSubreddits.push({ name: sub, starred: false });
+      }
+    }
+
+    // Limit to top 20 subreddits to avoid too many API calls
+    const subredditsToFetch = orderedSubreddits.slice(0, 20);
+
+    // g. Fetch top posts from each subreddit using redditService
+    const allPosts = [];
+    const starredSubredditSet = new Set(starredSubreddits);
+
+    for (const { name: subreddit, starred } of subredditsToFetch) {
+      try {
+        const posts = await redditService.getTopPosts(subreddit, 5, prisma);
+        for (const post of posts) {
+          allPosts.push({
+            ...post,
+            _starred: starred,
+            _subreddit: subreddit
+          });
+        }
+      } catch (e) {
+        console.error(`Failed to fetch posts from r/${subreddit}:`, e.message);
+        // Continue with other subreddits
+      }
+    }
+
+    // h. Filter out already curated posts
+    const filteredPosts = allPosts.filter(post => {
+      const fullname = post.name || `t3_${post.id}`;
+      return !curatedPostIds.has(fullname);
+    });
+
+    // i. Sort by score (with starred subreddit boost)
+    const STARRED_BOOST = 2.0; // 2x score boost for starred subreddits
+    filteredPosts.sort((a, b) => {
+      const scoreA = (a.score || 0) * (a._starred ? STARRED_BOOST : 1);
+      const scoreB = (b.score || 0) * (b._starred ? STARRED_BOOST : 1);
+      return scoreB - scoreA;
+    });
+
+    // j. Return top N posts + recommended subreddits
+    const TOP_N = 25;
+    const topPosts = filteredPosts.slice(0, TOP_N).map(post => ({
+      id: post.id,
+      name: post.name || `t3_${post.id}`,
+      subreddit: post.subreddit,
+      title: post.title,
+      url: post.url,
+      thumbnail: post.thumbnail && !post.thumbnail.includes('self') && !post.thumbnail.includes('default') ? post.thumbnail : null,
+      score: post.score,
+      numComments: post.num_comments,
+      author: post.author,
+      createdUtc: post.created_utc ? new Date(post.created_utc * 1000).toISOString() : null,
+      isSelf: post.is_self,
+      selftext: post.selftext || null,
+      permalink: post.permalink,
+      isStarredSubreddit: starredSubredditSet.has(post.subreddit)
+    }));
+
+    // Generate recommended subreddits (from persona that aren't already in the feed)
+    const feedSubreddits = new Set(topPosts.map(p => p.subreddit));
+    let recommendedSubreddits = [];
+    if (persona && Array.isArray(persona.subredditAffinities)) {
+      recommendedSubreddits = persona.subredditAffinities
+        .filter(a => !feedSubreddits.has(a.name) && !starredSubredditSet.has(a.name))
+        .slice(0, 5)
+        .map(a => a.name);
+    }
+
+    return res.json({
+      posts: topPosts,
+      recommendedSubreddits,
+      meta: {
+        totalFetched: allPosts.length,
+        totalFiltered: filteredPosts.length,
+        subredditsFetched: subredditsToFetch.length,
+        starredCount: starredSubreddits.length
+      }
+    });
+  } catch (error) {
+    console.error('getFeed error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 module.exports = {
   getPersona,
   getCurated,
   recordAction,
   getSettings,
   toggleStar,
-  refreshPersona
+  refreshPersona,
+  getFeed
 };
