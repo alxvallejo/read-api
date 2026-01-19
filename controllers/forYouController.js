@@ -178,17 +178,21 @@ async function recordAction(req, res) {
     });
 
     if (!postData) {
-      // Fetch from Reddit
-      const response = await fetch(`https://oauth.reddit.com/by_id/${redditPostId}`, {
+      // Fetch from Reddit - need t3_ prefix for the API
+      const fullname = redditPostId.startsWith('t3_') ? redditPostId : `t3_${redditPostId}`;
+      const response = await fetch(`https://oauth.reddit.com/by_id/${fullname}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'User-Agent': USER_AGENT
         }
       });
 
+      console.log(`Fetching post from Reddit: /by_id/${fullname}, status: ${response.status}`);
+
       if (response.ok) {
         const data = await response.json();
         const post = data.data?.children?.[0]?.data;
+        console.log('Reddit returned post:', post ? post.title : 'null');
 
         if (post) {
           postData = await prisma.curatedPost.create({
