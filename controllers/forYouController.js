@@ -334,6 +334,53 @@ async function toggleStar(req, res) {
   }
 }
 
+// POST /api/foryou/subscriptions/sync
+async function syncSubscriptions(req, res) {
+  try {
+    const token = extractToken(req);
+    if (!token) {
+      return res.status(401).json({ error: 'Authorization required' });
+    }
+
+    const { user } = await getUserFromToken(token);
+
+    // Fetch user's subscriptions from Reddit (up to 100)
+    const subsResponse = await fetch('https://oauth.reddit.com/subreddits/mine/subscriber?limit=100', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!subsResponse.ok) {
+      return res.status(502).json({ error: 'Failed to fetch subscriptions from Reddit' });
+    }
+
+    const subsData = await subsResponse.json();
+    const subreddits = (subsData.data?.children || []).map(c => c.data.display_name);
+
+    // Delete old subscriptions and insert new ones
+    await prisma.userSubscription.deleteMany({
+      where: { userId: user.id }
+    });
+
+    if (subreddits.length > 0) {
+      await prisma.userSubscription.createMany({
+        data: subreddits.map(subreddit => ({
+          userId: user.id,
+          subreddit
+        }))
+      });
+    }
+
+    return res.json({
+      success: true,
+      count: subreddits.length,
+      subreddits
+    });
+  } catch (error) {
+    console.error('syncSubscriptions error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 // POST /api/foryou/persona/refresh
 async function refreshPersona(req, res) {
   try {
@@ -665,19 +712,12 @@ async function getFeed(req, res) {
     });
     const curatedPostIds = new Set(curatedPosts.map(p => p.redditPostId));
 
-    // e. Fetch user's subscriptions from Reddit
-    let userSubscriptions = [];
-    try {
-      const subsResponse = await fetch('https://oauth.reddit.com/subreddits/mine/subscriber?limit=100', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (subsResponse.ok) {
-        const subsData = await subsResponse.json();
-        userSubscriptions = (subsData.data?.children || []).map(c => c.data.display_name);
-      }
-    } catch (e) {
-      console.error('Failed to fetch user subscriptions:', e.message);
-    }
+    // e. Get user's subscriptions from database (synced via settings)
+    const storedSubscriptions = await prisma.userSubscription.findMany({
+      where: { userId: user.id },
+      select: { subreddit: true }
+    });
+    const userSubscriptions = storedSubscriptions.map(s => s.subreddit);
 
     // f. Build a combined list of subreddits (starred first, then persona affinities, then subscriptions)
     const subredditSet = new Set();
@@ -803,6 +843,7 @@ module.exports = {
   recordAction,
   getSettings,
   toggleStar,
+  syncSubscriptions,
   refreshPersona,
   getFeed,
   generateReport

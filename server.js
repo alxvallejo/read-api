@@ -313,6 +313,7 @@ app.get('/api/foryou/curated', forYouController.getCurated);
 app.post('/api/foryou/action', forYouController.recordAction);
 app.get('/api/foryou/settings', forYouController.getSettings);
 app.post('/api/foryou/settings/star', forYouController.toggleStar);
+app.post('/api/foryou/subscriptions/sync', forYouController.syncSubscriptions);
 app.get('/api/foryou/feed', forYouController.getFeed);
 app.post('/api/foryou/report/generate', forYouController.generateReport);
 

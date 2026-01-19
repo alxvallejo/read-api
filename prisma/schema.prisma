@@ -428,6 +428,7 @@ model User {
   persona           UserPersona?
   curatedPosts      CuratedPost[]
   subredditStars    UserSubredditStar[]
+  subscriptions     UserSubscription[]
   forYouReports     ForYouReport[]
 
   @@index([redditUsername])
@@ -514,6 +515,20 @@ model UserSubredditStar {
   @@unique([userId, subreddit])
   @@index([userId])
   @@map("user_subreddit_stars")
+}
+
+// User's Reddit subscriptions (synced from Reddit API)
+model UserSubscription {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  subreddit   String
+  syncedAt    DateTime  @default(now()) @map("synced_at")
+
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, subreddit])
+  @@index([userId])
+  @@map("user_subscriptions")
 }
 
 model ForYouReport {
