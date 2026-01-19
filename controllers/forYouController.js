@@ -401,10 +401,11 @@ async function refreshPersona(req, res) {
       return res.status(401).json({ error: 'Authorization required' });
     }
 
-    const { user } = await getUserFromToken(token);
+    const { user, redditUser } = await getUserFromToken(token);
 
     // Fetch user's saved posts from Reddit (up to 50)
-    const savedResponse = await fetch('https://oauth.reddit.com/user/me/saved?limit=50', {
+    // Note: Must use username, not "me" - Reddit API quirk
+    const savedResponse = await fetch(`https://oauth.reddit.com/user/${redditUser.name}/saved?limit=50`, {
       headers: {
         Authorization: `Bearer ${token}`,
         'User-Agent': USER_AGENT
