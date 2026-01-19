@@ -727,7 +727,10 @@ async function getFeed(req, res) {
           });
         }
       } catch (e) {
-        console.error(`Failed to fetch posts from r/${subreddit}:`, e.message);
+        // Silently skip 403 (private/restricted) and 404 (banned/nonexistent) subreddits
+        if (!e.message?.includes('403') && !e.message?.includes('404')) {
+          console.error(`Failed to fetch posts from r/${subreddit}:`, e.message);
+        }
         // Continue with other subreddits
       }
     }
