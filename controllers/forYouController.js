@@ -1022,22 +1022,34 @@ async function getSubredditPosts(req, res) {
 
     // Use OAuth API instead of RSS (Reddit blocks RSS from cloud IPs)
     const accessToken = await getAppOnlyAccessToken();
-    const url = sortParam === 'top'
+
+    // Fetch posts and subreddit info in parallel
+    const postsUrl = sortParam === 'top'
       ? `https://oauth.reddit.com/r/${subredditName}/${sortParam}?limit=20&t=week`
       : `https://oauth.reddit.com/r/${subredditName}/${sortParam}?limit=20`;
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'User-Agent': USER_AGENT
-      }
-    });
+    const aboutUrl = `https://oauth.reddit.com/r/${subredditName}/about`;
 
-    if (!response.ok) {
-      console.error(`OAuth fetch failed for r/${subredditName}: ${response.status}`);
+    const [postsResponse, aboutResponse] = await Promise.all([
+      fetch(postsUrl, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'User-Agent': USER_AGENT
+        }
+      }),
+      fetch(aboutUrl, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'User-Agent': USER_AGENT
+        }
+      })
+    ]);
+
+    if (!postsResponse.ok) {
+      console.error(`OAuth fetch failed for r/${subredditName}: ${postsResponse.status}`);
       return res.status(502).json({ error: 'Failed to fetch from Reddit' });
     }
 
-    const data = await response.json();
+    const data = await postsResponse.json();
     const posts = data.data.children
       .filter(child => child.kind === 't3')
       .map(child => child.data)
@@ -1054,9 +1066,23 @@ async function getSubredditPosts(req, res) {
         thumbnail: post.thumbnail && !post.thumbnail.includes('self') ? post.thumbnail : null,
       }));
 
+    // Extract related subreddits from description
+    let relatedSubreddits = [];
+    if (aboutResponse.ok) {
+      const aboutData = await aboutResponse.json();
+      const description = aboutData.data?.description || '';
+      // Match r/subredditname patterns, excluding the current subreddit
+      const matches = description.match(/r\/[a-zA-Z0-9_]+/g) || [];
+      relatedSubreddits = [...new Set(matches)]
+        .map(s => s.replace('r/', ''))
+        .filter(s => s.toLowerCase() !== subredditName.toLowerCase())
+        .slice(0, 10); // Limit to 10
+    }
+
     res.json({
       subreddit: subredditName,
-      posts
+      posts,
+      relatedSubreddits
     });
   } catch (error) {
     console.error('getSubredditPosts error:', error);
