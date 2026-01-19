@@ -316,6 +316,7 @@ app.post('/api/foryou/settings/star', forYouController.toggleStar);
 app.post('/api/foryou/subscriptions/sync', forYouController.syncSubscriptions);
 app.get('/api/foryou/feed', forYouController.getFeed);
 app.post('/api/foryou/report/generate', forYouController.generateReport);
+app.get('/api/foryou/suggestions', forYouController.getSuggestions);
 
 // Admin API (protected)
 app.get('/api/admin/stats', adminController.requireAdmin, adminController.getStats);

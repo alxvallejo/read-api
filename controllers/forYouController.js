@@ -934,6 +934,67 @@ async function getFeed(req, res) {
   }
 }
 
+/**
+ * GET /api/foryou/suggestions
+ * Returns suggested subreddits based on user's persona
+ */
+async function getSuggestions(req, res) {
+  try {
+    const token = extractToken(req);
+    if (!token) {
+      return res.status(401).json({ error: 'Authorization required' });
+    }
+
+    const { user } = await getUserFromToken(token);
+
+    // Get user's existing subreddit affinities
+    const persona = await prisma.userPersona.findUnique({
+      where: { userId: user.id }
+    });
+
+    const existingAffinities = persona?.subredditAffinities || [];
+    const existingSubreddits = new Set(existingAffinities.map(a => a.name.toLowerCase()));
+
+    // Get NOT_INTERESTED counts to exclude blocked subreddits
+    const notInterestedCounts = await prisma.curatedPost.groupBy({
+      by: ['subreddit'],
+      where: {
+        userId: user.id,
+        action: 'NOT_INTERESTED'
+      },
+      _count: { subreddit: true }
+    });
+
+    const blockedSubreddits = new Set();
+    for (const item of notInterestedCounts) {
+      if (item._count.subreddit >= 5) {
+        blockedSubreddits.add(item.subreddit.toLowerCase());
+      }
+    }
+
+    // Get curated subreddits from categories
+    const subreddits = await prisma.subreddit.findMany({
+      include: { category: true },
+      orderBy: { sortOrder: 'asc' }
+    });
+
+    // Filter out existing and blocked, limit to 8
+    const suggestions = subreddits
+      .filter(s => !existingSubreddits.has(s.name.toLowerCase()))
+      .filter(s => !blockedSubreddits.has(s.name.toLowerCase()))
+      .slice(0, 8)
+      .map(s => ({
+        name: s.name,
+        category: s.category.name
+      }));
+
+    res.json({ suggestions });
+  } catch (error) {
+    console.error('getSuggestions error:', error);
+    res.status(500).json({ error: 'Failed to get suggestions' });
+  }
+}
+
 module.exports = {
   getPersona,
   getCurated,
@@ -943,5 +1004,6 @@ module.exports = {
   syncSubscriptions,
   refreshPersona,
   getFeed,
-  generateReport
+  generateReport,
+  getSuggestions
 };
