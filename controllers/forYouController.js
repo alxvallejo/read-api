@@ -775,6 +775,14 @@ async function getFeed(req, res) {
     // Limit to top 10 subreddits for speed
     const subredditsToFetch = orderedSubreddits.slice(0, 10);
 
+    console.log('getFeed debug:', {
+      userId: user.id,
+      starredCount: starredSubreddits.length,
+      personaAffinitiesCount: persona?.subredditAffinities?.length || 0,
+      subscriptionsCount: userSubscriptions.length,
+      subredditsToFetch: subredditsToFetch.map(s => s.name)
+    });
+
     // g. Fetch top posts from each subreddit using public JSON endpoint (cached, fast)
     const starredSubredditSet = new Set(starredSubreddits);
 
@@ -796,6 +804,11 @@ async function getFeed(req, res) {
 
     const results = await Promise.all(fetchPromises);
     const allPosts = results.flat();
+
+    console.log('getFeed results:', {
+      totalPostsFetched: allPosts.length,
+      curatedPostsToExclude: curatedPostIds.size
+    });
 
     // h. Filter out already curated posts
     const filteredPosts = allPosts.filter(post => {
