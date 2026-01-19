@@ -729,31 +729,31 @@ async function getFeed(req, res) {
       }
     }
 
-    // Limit to top 20 subreddits to avoid too many API calls
-    const subredditsToFetch = orderedSubreddits.slice(0, 20);
+    // Limit to top 15 subreddits to reduce API calls
+    const subredditsToFetch = orderedSubreddits.slice(0, 15);
 
-    // g. Fetch top posts from each subreddit using user's token (can access private subs)
-    const allPosts = [];
+    // g. Fetch top posts from each subreddit IN PARALLEL using user's token
     const starredSubredditSet = new Set(starredSubreddits);
 
-    for (const { name: subreddit, starred } of subredditsToFetch) {
+    const fetchPromises = subredditsToFetch.map(async ({ name: subreddit, starred }) => {
       try {
         const posts = await fetchSubredditPosts(token, subreddit, 5);
-        for (const post of posts) {
-          allPosts.push({
-            ...post,
-            _starred: starred,
-            _subreddit: subreddit
-          });
-        }
+        return posts.map(post => ({
+          ...post,
+          _starred: starred,
+          _subreddit: subreddit
+        }));
       } catch (e) {
         // Silently skip 403 (private/restricted) and 404 (banned/nonexistent) subreddits
         if (!e.message?.includes('403') && !e.message?.includes('404')) {
           console.error(`Failed to fetch posts from r/${subreddit}:`, e.message);
         }
-        // Continue with other subreddits
+        return []; // Return empty array on error
       }
-    }
+    });
+
+    const results = await Promise.all(fetchPromises);
+    const allPosts = results.flat();
 
     // h. Filter out already curated posts
     const filteredPosts = allPosts.filter(post => {
