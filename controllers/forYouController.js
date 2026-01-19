@@ -3,7 +3,7 @@ const { PrismaClient } = require('@prisma/client');
 const { Pool } = require('pg');
 const { PrismaPg } = require('@prisma/adapter-pg');
 const OpenAI = require('openai');
-const redditService = require('../services/redditService');
+const rssService = require('../services/rssService');
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -63,25 +63,6 @@ function extractToken(req) {
   return auth.slice(7);
 }
 
-// Fetch top posts from a subreddit using user's OAuth token (can access private subs)
-async function fetchSubredditPosts(userToken, subreddit, limit = 5) {
-  const response = await fetch(
-    `https://oauth.reddit.com/r/${subreddit}/hot?limit=${limit}`,
-    {
-      headers: {
-        Authorization: `Bearer ${userToken}`,
-        'User-Agent': process.env.USER_AGENT || 'Reddzit/1.0'
-      }
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Reddit API error ${response.status}: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  return (data.data?.children || []).map(child => child.data);
-}
 
 // GET /api/foryou/persona
 async function getPersona(req, res) {
@@ -729,26 +710,25 @@ async function getFeed(req, res) {
       }
     }
 
-    // Limit to top 15 subreddits to reduce API calls
-    const subredditsToFetch = orderedSubreddits.slice(0, 15);
+    // Limit to top 10 subreddits for speed
+    const subredditsToFetch = orderedSubreddits.slice(0, 10);
 
-    // g. Fetch top posts from each subreddit IN PARALLEL using user's token
+    // g. Fetch top posts from each subreddit using public JSON endpoint (cached, fast)
     const starredSubredditSet = new Set(starredSubreddits);
 
     const fetchPromises = subredditsToFetch.map(async ({ name: subreddit, starred }) => {
       try {
-        const posts = await fetchSubredditPosts(token, subreddit, 5);
+        // Use rssService which has built-in caching (10 min)
+        const posts = await rssService.getTopPostsFromJSON(subreddit, 10, 'hot');
         return posts.map(post => ({
           ...post,
           _starred: starred,
           _subreddit: subreddit
         }));
       } catch (e) {
-        // Silently skip 403 (private/restricted) and 404 (banned/nonexistent) subreddits
-        if (!e.message?.includes('403') && !e.message?.includes('404')) {
-          console.error(`Failed to fetch posts from r/${subreddit}:`, e.message);
-        }
-        return []; // Return empty array on error
+        // Silently skip failed subreddits (private, banned, etc.)
+        console.error(`Failed to fetch r/${subreddit}:`, e.message);
+        return [];
       }
     });
 
