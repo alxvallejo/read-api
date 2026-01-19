@@ -830,7 +830,9 @@ async function getFeed(req, res) {
     // h. Filter out already curated posts
     const filteredPosts = allPosts.filter(post => {
       const fullname = post.name || `t3_${post.id}`;
-      return !curatedPostIds.has(fullname);
+      // Strip t3_ prefix to match stored redditPostId format
+      const postId = fullname.startsWith('t3_') ? fullname.slice(3) : fullname;
+      return !curatedPostIds.has(postId);
     });
 
     // i. Sort by score (with starred subreddit boost)
