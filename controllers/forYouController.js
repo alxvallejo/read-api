@@ -746,32 +746,60 @@ async function getFeed(req, res) {
     });
     const userSubscriptions = storedSubscriptions.map(s => s.subreddit);
 
+    // e2. Get "not interested" counts by subreddit to penalize/block
+    const notInterestedCounts = await prisma.curatedPost.groupBy({
+      by: ['subreddit'],
+      where: {
+        userId: user.id,
+        action: 'NOT_INTERESTED'
+      },
+      _count: { subreddit: true }
+    });
+
+    // Build sets for blocked (5+) and penalized (3-4) subreddits
+    const blockedSubreddits = new Set();
+    const penalizedSubreddits = new Map(); // subreddit -> count
+    for (const item of notInterestedCounts) {
+      const count = item._count.subreddit;
+      if (count >= 5) {
+        blockedSubreddits.add(item.subreddit);
+        console.log(`Blocking r/${item.subreddit} (${count} not interested)`);
+      } else if (count >= 3) {
+        penalizedSubreddits.set(item.subreddit, count);
+        console.log(`Penalizing r/${item.subreddit} (${count} not interested)`);
+      }
+    }
+
     // f. Build a combined list of subreddits (starred first, then persona affinities, then subscriptions)
     const subredditSet = new Set();
     const orderedSubreddits = [];
 
-    // Add starred subreddits first (highest priority)
+    // Add starred subreddits first (highest priority) - skip blocked
     for (const sub of starredSubreddits) {
-      if (!subredditSet.has(sub)) {
+      if (!subredditSet.has(sub) && !blockedSubreddits.has(sub)) {
         subredditSet.add(sub);
         orderedSubreddits.push({ name: sub, starred: true });
       }
     }
 
-    // Add persona affinities (sorted by weight)
+    // Add persona affinities (sorted by weight) - skip blocked, deprioritize penalized
     if (persona && Array.isArray(persona.subredditAffinities)) {
-      const sortedAffinities = [...persona.subredditAffinities].sort((a, b) => (b.weight || 0) - (a.weight || 0));
+      const sortedAffinities = [...persona.subredditAffinities].sort((a, b) => {
+        const weightA = (a.weight || 0) * (penalizedSubreddits.has(a.name) ? 0.5 : 1);
+        const weightB = (b.weight || 0) * (penalizedSubreddits.has(b.name) ? 0.5 : 1);
+        return weightB - weightA;
+      });
       for (const affinity of sortedAffinities) {
-        if (!subredditSet.has(affinity.name)) {
+        if (!subredditSet.has(affinity.name) && !blockedSubreddits.has(affinity.name)) {
           subredditSet.add(affinity.name);
           orderedSubreddits.push({ name: affinity.name, starred: false });
         }
       }
     }
 
-    // Add user subscriptions
+    // Add user subscriptions - skip blocked
     for (const sub of userSubscriptions) {
-      if (!subredditSet.has(sub)) {
+      if (!subredditSet.has(sub) && !blockedSubreddits.has(sub)) {
         subredditSet.add(sub);
         orderedSubreddits.push({ name: sub, starred: false });
       }
