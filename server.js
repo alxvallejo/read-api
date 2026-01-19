@@ -318,6 +318,7 @@ app.get('/api/foryou/feed', forYouController.getFeed);
 app.post('/api/foryou/report/generate', forYouController.generateReport);
 app.get('/api/foryou/suggestions', forYouController.getSuggestions);
 app.get('/api/subreddit/:name/posts', forYouController.getSubredditPosts);
+app.post('/api/foryou/subreddit-not-interested', forYouController.subredditNotInterested);
 
 // Admin API (protected)
 app.get('/api/admin/stats', adminController.requireAdmin, adminController.getStats);

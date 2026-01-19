@@ -1026,6 +1026,59 @@ async function getSubredditPosts(req, res) {
   }
 }
 
+/**
+ * POST /api/foryou/subreddit-not-interested
+ * Records that user is not interested in a subreddit
+ */
+async function subredditNotInterested(req, res) {
+  try {
+    const token = extractToken(req);
+    if (!token) {
+      return res.status(401).json({ error: 'Authorization required' });
+    }
+
+    const { user } = await getUserFromToken(token);
+
+    const { subreddit } = req.body;
+    if (!subreddit || typeof subreddit !== 'string') {
+      return res.status(400).json({ error: 'Missing subreddit' });
+    }
+
+    // Create a placeholder curated post to record the NOT_INTERESTED action
+    // This uses the same weighting system as post-level dismissals
+    await prisma.curatedPost.create({
+      data: {
+        userId: user.id,
+        redditPostId: `subreddit_dismiss_${subreddit}_${Date.now()}`,
+        subreddit: subreddit,
+        title: `[Subreddit Dismissed] r/${subreddit}`,
+        action: 'NOT_INTERESTED'
+      }
+    });
+
+    // Count total dismissals for this subreddit
+    const count = await prisma.curatedPost.count({
+      where: {
+        userId: user.id,
+        subreddit: subreddit,
+        action: 'NOT_INTERESTED'
+      }
+    });
+
+    console.log(`User ${user.redditUsername} dismissed r/${subreddit} (total: ${count})`);
+
+    res.json({
+      success: true,
+      subreddit,
+      dismissCount: count,
+      blocked: count >= 5
+    });
+  } catch (error) {
+    console.error('subredditNotInterested error:', error);
+    res.status(500).json({ error: 'Failed to record dismissal' });
+  }
+}
+
 module.exports = {
   getPersona,
   getCurated,
@@ -1037,5 +1090,6 @@ module.exports = {
   getFeed,
   generateReport,
   getSuggestions,
-  getSubredditPosts
+  getSubredditPosts,
+  subredditNotInterested
 };
