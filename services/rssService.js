@@ -1,14 +1,17 @@
 const Parser = require('rss-parser');
 
+const USER_AGENT = process.env.USER_AGENT || 'Reddzit/1.0';
+
 const parser = new Parser({
   customFields: {
     item: [
       ['media:thumbnail', 'thumbnail'],
     ]
+  },
+  headers: {
+    'User-Agent': USER_AGENT
   }
 });
-
-const USER_AGENT = process.env.USER_AGENT || 'Reddzit/1.0';
 
 // Simple in-memory cache
 let cache = {
