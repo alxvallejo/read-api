@@ -63,6 +63,26 @@ function extractToken(req) {
   return auth.slice(7);
 }
 
+// Fetch top posts from a subreddit using user's OAuth token (can access private subs)
+async function fetchSubredditPosts(userToken, subreddit, limit = 5) {
+  const response = await fetch(
+    `https://oauth.reddit.com/r/${subreddit}/hot?limit=${limit}`,
+    {
+      headers: {
+        Authorization: `Bearer ${userToken}`,
+        'User-Agent': process.env.USER_AGENT || 'Reddzit/1.0'
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Reddit API error ${response.status}: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return (data.data?.children || []).map(child => child.data);
+}
+
 // GET /api/foryou/persona
 async function getPersona(req, res) {
   try {
@@ -712,13 +732,13 @@ async function getFeed(req, res) {
     // Limit to top 20 subreddits to avoid too many API calls
     const subredditsToFetch = orderedSubreddits.slice(0, 20);
 
-    // g. Fetch top posts from each subreddit using redditService
+    // g. Fetch top posts from each subreddit using user's token (can access private subs)
     const allPosts = [];
     const starredSubredditSet = new Set(starredSubreddits);
 
     for (const { name: subreddit, starred } of subredditsToFetch) {
       try {
-        const posts = await redditService.getTopPosts(subreddit, 5, prisma);
+        const posts = await fetchSubredditPosts(token, subreddit, 5);
         for (const post of posts) {
           allPosts.push({
             ...post,
