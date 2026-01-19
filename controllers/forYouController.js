@@ -4,6 +4,7 @@ const { Pool } = require('pg');
 const { PrismaPg } = require('@prisma/adapter-pg');
 const OpenAI = require('openai');
 const rssService = require('../services/rssService');
+const { getAppOnlyAccessToken } = require('./redditProxyController');
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -997,7 +998,7 @@ async function getSuggestions(req, res) {
 
 /**
  * GET /api/subreddit/:name/posts
- * Returns top posts from a subreddit via RSS
+ * Returns top posts from a subreddit via OAuth API
  */
 async function getSubredditPosts(req, res) {
   try {
@@ -1014,7 +1015,36 @@ async function getSubredditPosts(req, res) {
       return res.status(400).json({ error: 'Invalid subreddit name' });
     }
 
-    const posts = await rssService.getTrendingFromRSS(subredditName, 20);
+    // Use OAuth API instead of RSS (Reddit blocks RSS from cloud IPs)
+    const accessToken = await getAppOnlyAccessToken();
+    const response = await fetch(`https://oauth.reddit.com/r/${subredditName}/hot?limit=20`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'User-Agent': USER_AGENT
+      }
+    });
+
+    if (!response.ok) {
+      console.error(`OAuth fetch failed for r/${subredditName}: ${response.status}`);
+      return res.status(502).json({ error: 'Failed to fetch from Reddit' });
+    }
+
+    const data = await response.json();
+    const posts = data.data.children
+      .filter(child => child.kind === 't3')
+      .map(child => child.data)
+      .filter(post => !post.over_18)
+      .map(post => ({
+        id: post.id,
+        title: post.title,
+        subreddit: post.subreddit,
+        link: `https://www.reddit.com${post.permalink}`,
+        author: post.author,
+        pubDate: new Date(post.created_utc * 1000).toISOString(),
+        score: post.score,
+        numComments: post.num_comments,
+        thumbnail: post.thumbnail && !post.thumbnail.includes('self') ? post.thumbnail : null,
+      }));
 
     res.json({
       subreddit: subredditName,
