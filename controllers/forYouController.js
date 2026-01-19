@@ -486,14 +486,16 @@ Guidelines:
           keywords: mockPersona.keywords,
           topics: mockPersona.topics,
           subredditAffinities: mockPersona.subredditAffinities,
-          contentPreferences: mockPersona.contentPreferences
+          contentPreferences: mockPersona.contentPreferences,
+          analyzedPostCount: postsToAnalyze.length
         },
         create: {
           userId: user.id,
           keywords: mockPersona.keywords,
           topics: mockPersona.topics,
           subredditAffinities: mockPersona.subredditAffinities,
-          contentPreferences: mockPersona.contentPreferences
+          contentPreferences: mockPersona.contentPreferences,
+          analyzedPostCount: postsToAnalyze.length
         }
       });
 
@@ -549,14 +551,16 @@ Guidelines:
         keywords: personaData.keywords,
         topics: personaData.topics,
         subredditAffinities: personaData.subredditAffinities,
-        contentPreferences: personaData.contentPreferences
+        contentPreferences: personaData.contentPreferences,
+        analyzedPostCount: postsToAnalyze.length
       },
       create: {
         userId: user.id,
         keywords: personaData.keywords,
         topics: personaData.topics,
         subredditAffinities: personaData.subredditAffinities,
-        contentPreferences: personaData.contentPreferences
+        contentPreferences: personaData.contentPreferences,
+        analyzedPostCount: postsToAnalyze.length
       }
     });
 
