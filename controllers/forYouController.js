@@ -771,22 +771,25 @@ async function getFeed(req, res) {
 
     // j. Return top N posts + recommended subreddits
     const TOP_N = 25;
-    const topPosts = filteredPosts.slice(0, TOP_N).map(post => ({
-      id: post.id,
-      name: post.name || `t3_${post.id}`,
-      subreddit: post.subreddit,
-      title: post.title,
-      url: post.url,
-      thumbnail: post.thumbnail && !post.thumbnail.includes('self') && !post.thumbnail.includes('default') ? post.thumbnail : null,
-      score: post.score,
-      numComments: post.num_comments,
-      author: post.author,
-      createdUtc: post.created_utc ? new Date(post.created_utc * 1000).toISOString() : null,
-      isSelf: post.is_self,
-      selftext: post.selftext || null,
-      permalink: post.permalink,
-      isStarredSubreddit: starredSubredditSet.has(post.subreddit)
-    }));
+    const topPosts = filteredPosts.slice(0, TOP_N).map(post => {
+      // Extract the post ID (without t3_ prefix) for redditPostId
+      const fullname = post.name || `t3_${post.id}`;
+      const redditPostId = fullname.startsWith('t3_') ? fullname.slice(3) : fullname;
+
+      return {
+        id: post.id,
+        redditPostId: redditPostId,
+        subreddit: post.subreddit,
+        title: post.title,
+        url: post.url,
+        thumbnail: post.thumbnail && !post.thumbnail.includes('self') && !post.thumbnail.includes('default') ? post.thumbnail : null,
+        score: post.score,
+        numComments: post.num_comments,
+        author: post.author,
+        createdUtc: post.created_utc ? new Date(post.created_utc * 1000).toISOString() : null,
+        isSelf: post.is_self
+      };
+    });
 
     // Generate recommended subreddits (from persona that aren't already in the feed)
     const feedSubreddits = new Set(topPosts.map(p => p.subreddit));
