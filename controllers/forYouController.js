@@ -15,9 +15,14 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 // Helper to get user from token (via Reddit API)
+const USER_AGENT = process.env.USER_AGENT || 'Reddzit/1.0';
+
 async function getUserFromToken(token) {
   const response = await fetch('https://oauth.reddit.com/api/v1/me', {
-    headers: { Authorization: `Bearer ${token}` }
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'User-Agent': USER_AGENT
+    }
   });
 
   if (!response.ok) {
@@ -174,7 +179,10 @@ async function recordAction(req, res) {
     if (!postData) {
       // Fetch from Reddit
       const response = await fetch(`https://oauth.reddit.com/by_id/${redditPostId}`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'User-Agent': USER_AGENT
+        }
       });
 
       if (response.ok) {
@@ -215,7 +223,8 @@ async function recordAction(req, res) {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/x-www-form-urlencoded'
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': USER_AGENT
         },
         body: `id=${redditPostId}`
       });
@@ -346,7 +355,10 @@ async function syncSubscriptions(req, res) {
 
     // Fetch user's subscriptions from Reddit (up to 100)
     const subsResponse = await fetch('https://oauth.reddit.com/subreddits/mine/subscriber?limit=100', {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'User-Agent': USER_AGENT
+      }
     });
 
     if (!subsResponse.ok) {
@@ -393,11 +405,16 @@ async function refreshPersona(req, res) {
 
     // Fetch user's saved posts from Reddit (up to 50)
     const savedResponse = await fetch('https://oauth.reddit.com/user/me/saved?limit=50', {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'User-Agent': USER_AGENT
+      }
     });
 
     if (!savedResponse.ok) {
-      return res.status(502).json({ error: 'Failed to fetch saved posts from Reddit' });
+      const errorText = await savedResponse.text();
+      console.error('Reddit saved posts error:', savedResponse.status, errorText);
+      return res.status(502).json({ error: `Failed to fetch saved posts from Reddit: ${savedResponse.status}` });
     }
 
     const savedData = await savedResponse.json();
