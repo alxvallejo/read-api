@@ -783,13 +783,30 @@ async function getFeed(req, res) {
       subredditsToFetch: subredditsToFetch.map(s => s.name)
     });
 
-    // g. Fetch top posts from each subreddit using public JSON endpoint (cached, fast)
+    // g. Fetch top posts from each subreddit using OAuth API (more reliable on production)
     const starredSubredditSet = new Set(starredSubreddits);
 
     const fetchPromises = subredditsToFetch.map(async ({ name: subreddit, starred }) => {
       try {
-        // Use rssService which has built-in caching (10 min)
-        const posts = await rssService.getTopPostsFromJSON(subreddit, 10, 'hot');
+        // Use OAuth API with user's token - more reliable than public JSON on cloud hosts
+        const response = await fetch(`https://oauth.reddit.com/r/${subreddit}/hot?limit=10`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'User-Agent': USER_AGENT
+          }
+        });
+
+        if (!response.ok) {
+          console.error(`OAuth fetch failed for r/${subreddit}: ${response.status}`);
+          return [];
+        }
+
+        const data = await response.json();
+        const posts = data.data.children
+          .filter(child => child.kind === 't3')
+          .map(child => child.data)
+          .filter(post => !post.over_18);
+
         return posts.map(post => ({
           ...post,
           _starred: starred,
