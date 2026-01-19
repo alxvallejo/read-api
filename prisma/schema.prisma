@@ -424,9 +424,133 @@ model User {
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
+  // For You feature relations
+  persona           UserPersona?
+  curatedPosts      CuratedPost[]
+  subredditStars    UserSubredditStar[]
+  subscriptions     UserSubscription[]
+  forYouReports     ForYouReport[]
+
   @@index([redditUsername])
   @@index([stripeCustomerId])
   @@map("users")
+}
+
+// ============ For You Feature ============
+
+model UserPersona {
+  id                  String    @id @default(uuid())
+  userId              String    @unique @map("user_id")
+
+  // LLM-generated persona
+  keywords            Json      // string[] - interest keywords
+  topics              Json      // string[] - topic areas
+  subredditAffinities Json      @map("subreddit_affinities") // { name, weight }[]
+  contentPreferences  Json      @map("content_preferences") // string[] - content types
+
+  // Metadata
+  analyzedPostCount   Int       @map("analyzed_post_count")
+  llmModel            String?   @map("llm_model")
+
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  user                User      @relation(fields: [userId], references: [id])
+
+  @@map("user_personas")
+}
+
+model CuratedPost {
+  id              String        @id @default(uuid())
+  userId          String        @map("user_id")
+
+  // Reddit post info
+  redditPostId    String        @map("reddit_post_id")
+  subreddit       String
+  title           String
+  url             String?
+  thumbnail       String?
+  score           Int           @default(0)
+  numComments     Int           @default(0) @map("num_comments")
+  author          String?
+  createdUtc      DateTime?     @map("created_utc")
+  isSelf          Boolean       @default(false) @map("is_self")
+
+  // Triage
+  action          TriageAction
+  savedVia        SavedVia      @default(REDDZIT) @map("saved_via")
+
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  user            User          @relation(fields: [userId], references: [id])
+
+  @@unique([userId, redditPostId])
+  @@index([userId, action])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("curated_posts")
+}
+
+enum TriageAction {
+  SAVED
+  ALREADY_READ
+  NOT_INTERESTED
+}
+
+enum SavedVia {
+  REDDZIT
+  REDDIT
+}
+
+model UserSubredditStar {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  subreddit   String
+  starred     Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, subreddit])
+  @@index([userId])
+  @@map("user_subreddit_stars")
+}
+
+// User's Reddit subscriptions (synced from Reddit API)
+model UserSubscription {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  subreddit   String
+  syncedAt    DateTime  @default(now()) @map("synced_at")
+
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, subreddit])
+  @@index([userId])
+  @@map("user_subscriptions")
+}
+
+model ForYouReport {
+  id              String        @id @default(uuid())
+  userId          String        @map("user_id")
+  status          ReportStatus  @default(DRAFT)
+
+  // Generation params
+  model           String        // gpt-4o-mini, gpt-4o, gpt-5.2
+  postCount       Int           @map("post_count")
+
+  // Output
+  content         String?       // Generated report content (markdown)
+
+  generatedAt     DateTime      @map("generated_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  user            User          @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("for_you_reports")
 }
 
 // ============ Global Briefing (Free Tier Content) ============
