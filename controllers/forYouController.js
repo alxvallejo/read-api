@@ -18,6 +18,21 @@ const prisma = new PrismaClient({ adapter });
 // Helper to get user from token (via Reddit API)
 const USER_AGENT = process.env.USER_AGENT || 'Reddzit/1.0';
 
+// Helper to decode HTML entities in Reddit titles
+function decodeHtmlEntities(text) {
+  if (!text) return text;
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, '/')
+    .replace(/&nbsp;/g, ' ');
+}
+
 async function getUserFromToken(token) {
   const response = await fetch('https://oauth.reddit.com/api/v1/me', {
     headers: {
@@ -1056,7 +1071,7 @@ async function getSubredditPosts(req, res) {
       .filter(post => !post.over_18)
       .map(post => ({
         id: post.id,
-        title: post.title,
+        title: decodeHtmlEntities(post.title),
         subreddit: post.subreddit,
         link: `https://www.reddit.com${post.permalink}`,
         author: post.author,
