@@ -1003,6 +1003,7 @@ async function getSuggestions(req, res) {
 async function getSubredditPosts(req, res) {
   try {
     const { name } = req.params;
+    const { sort = 'hot' } = req.query;
 
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'Invalid subreddit name' });
@@ -1015,9 +1016,16 @@ async function getSubredditPosts(req, res) {
       return res.status(400).json({ error: 'Invalid subreddit name' });
     }
 
+    // Validate sort parameter
+    const validSorts = ['hot', 'top', 'new'];
+    const sortParam = validSorts.includes(sort) ? sort : 'hot';
+
     // Use OAuth API instead of RSS (Reddit blocks RSS from cloud IPs)
     const accessToken = await getAppOnlyAccessToken();
-    const response = await fetch(`https://oauth.reddit.com/r/${subredditName}/hot?limit=20`, {
+    const url = sortParam === 'top'
+      ? `https://oauth.reddit.com/r/${subredditName}/${sortParam}?limit=20&t=week`
+      : `https://oauth.reddit.com/r/${subredditName}/${sortParam}?limit=20`;
+    const response = await fetch(url, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'User-Agent': USER_AGENT
