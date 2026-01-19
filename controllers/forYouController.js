@@ -995,6 +995,37 @@ async function getSuggestions(req, res) {
   }
 }
 
+/**
+ * GET /api/subreddit/:name/posts
+ * Returns top posts from a subreddit via RSS
+ */
+async function getSubredditPosts(req, res) {
+  try {
+    const { name } = req.params;
+
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ error: 'Invalid subreddit name' });
+    }
+
+    // Sanitize subreddit name
+    const subredditName = name.replace(/[^a-zA-Z0-9_]/g, '');
+
+    if (!subredditName) {
+      return res.status(400).json({ error: 'Invalid subreddit name' });
+    }
+
+    const posts = await rssService.getTrendingFromRSS(subredditName, 20);
+
+    res.json({
+      subreddit: subredditName,
+      posts
+    });
+  } catch (error) {
+    console.error('getSubredditPosts error:', error);
+    res.status(500).json({ error: 'Failed to fetch subreddit posts' });
+  }
+}
+
 module.exports = {
   getPersona,
   getCurated,
@@ -1005,5 +1036,6 @@ module.exports = {
   refreshPersona,
   getFeed,
   generateReport,
-  getSuggestions
+  getSuggestions,
+  getSubredditPosts
 };
