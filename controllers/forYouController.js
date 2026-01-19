@@ -154,6 +154,7 @@ async function recordAction(req, res) {
     }
 
     const { redditPostId, action } = req.body;
+    console.log('recordAction received:', { redditPostId, action });
 
     if (!redditPostId || !action) {
       return res.status(400).json({ error: 'redditPostId and action required' });
@@ -828,12 +829,22 @@ async function getFeed(req, res) {
     });
 
     // h. Filter out already curated posts
+    console.log('Curated post IDs to exclude:', Array.from(curatedPostIds));
+    // Debug: log first post structure
+    if (allPosts.length > 0) {
+      console.log('Sample post structure:', { name: allPosts[0].name, id: allPosts[0].id });
+    }
     const filteredPosts = allPosts.filter(post => {
       const fullname = post.name || `t3_${post.id}`;
       // Strip t3_ prefix to match stored redditPostId format
       const postId = fullname.startsWith('t3_') ? fullname.slice(3) : fullname;
-      return !curatedPostIds.has(postId);
+      const shouldExclude = curatedPostIds.has(postId);
+      if (shouldExclude) {
+        console.log(`Excluding post: ${postId}`);
+      }
+      return !shouldExclude;
     });
+    console.log(`Filtered ${allPosts.length - filteredPosts.length} curated posts`);
 
     // i. Sort by score (with starred subreddit boost)
     const STARRED_BOOST = 2.0; // 2x score boost for starred subreddits
