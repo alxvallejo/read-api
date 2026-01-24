@@ -66,59 +66,78 @@ async function generateTopPostsReport(force = false) {
     });
   }
 
-  // 4. Fetch top posts from r/all using public JSON endpoint (no OAuth)
-  console.log('Fetching top posts from r/all via public JSON...');
+  // 4. Fetch top posts from r/all using RSS feed (JSON endpoint blocked on server)
+  console.log('Fetching top posts from r/all via RSS...');
   let candidates;
   try {
-    candidates = await rssService.getTopPostsFromJSON('all', 50, 'hot');
+    candidates = await rssService.getTrendingFromRSS('all', 50);
   } catch (error) {
     console.error('Failed to fetch posts:', error.message);
     await prisma.$disconnect();
     return;
   }
 
-  // 5. Filter excluded posts
-  candidates = candidates.filter(p => !excludePostIds.has(p.id));
+  // 5. Filter excluded posts (extract post ID from RSS link for comparison)
+  candidates = candidates.filter(p => {
+    let postId = p.id;
+    if (p.link) {
+      const match = p.link.match(/\/comments\/([a-z0-9]+)/i);
+      if (match) postId = match[1];
+    }
+    return !excludePostIds.has(postId);
+  });
 
   // 6. Select top stories
   const selectedStories = candidates.slice(0, STORIES_PER_REPORT);
 
   console.log(`Selected ${selectedStories.length} stories for top posts report.`);
 
-  // 7. Process stories with LLM (no comments since we're not using OAuth)
+  // 7. Process stories with LLM (no comments since we're using RSS)
   for (const [index, post] of selectedStories.entries()) {
     console.log(`Processing story ${index + 1}: ${post.title.slice(0, 60)}...`);
 
     // Generate analysis without comments
     const analysis = await llmService.generateStoryAnalysis(post, [], null);
 
-    // Extract image URL
-    let imageUrl = null;
-    if (post.preview?.images?.[0]?.source?.url) {
-      imageUrl = post.preview.images[0].source.url.replace(/&amp;/g, '&');
-    } else if (post.thumbnail && post.thumbnail.startsWith('http')) {
-      imageUrl = post.thumbnail;
+    // Extract permalink path from RSS link (e.g., https://www.reddit.com/r/... -> /r/...)
+    let permalink = null;
+    if (post.link) {
+      try {
+        const url = new URL(post.link);
+        permalink = url.pathname;
+      } catch {
+        permalink = post.link;
+      }
     }
 
-    // Save story (no top comment data)
+    // Extract post ID from RSS id or link
+    // RSS id is often the full URL, we need just the post ID (e.g., "abc123")
+    let postId = post.id;
+    if (post.link) {
+      const match = post.link.match(/\/comments\/([a-z0-9]+)/i);
+      if (match) {
+        postId = match[1];
+      }
+    }
+
+    // Save story (RSS has limited data - no score, comments, or images)
     await prisma.hourlyPulseStory.create({
       data: {
         reportId: report.id,
         rank: index + 1,
-        subreddit: post.subreddit_name_prefixed?.replace('r/', '') || post.subreddit,
-        redditPostId: post.id,
-        redditPermalink: post.permalink,
+        subreddit: post.subreddit,
+        redditPostId: postId,
+        redditPermalink: permalink,
         title: post.title,
-        postUrl: post.url,
-        imageUrl: imageUrl,
+        postUrl: post.link, // RSS link is the Reddit post URL
+        imageUrl: null, // RSS doesn't include images
         author: post.author,
-        score: post.score,
-        numComments: post.num_comments,
-        createdUtc: new Date(post.created_utc * 1000),
+        score: null, // RSS doesn't include score
+        numComments: null, // RSS doesn't include comment count
+        createdUtc: post.pubDate ? new Date(post.pubDate) : new Date(),
         summary: analysis.summary,
         sentimentLabel: analysis.sentimentLabel,
         topicTags: analysis.topicTags,
-        // No comment data when using public JSON
         topCommentAuthor: null,
         topCommentBody: null,
         topCommentScore: null,
