@@ -132,8 +132,8 @@ async function generateTopPostsReport(force = false) {
         postUrl: post.link, // RSS link is the Reddit post URL
         imageUrl: null, // RSS doesn't include images
         author: post.author,
-        score: null, // RSS doesn't include score
-        numComments: null, // RSS doesn't include comment count
+        score: 0, // RSS doesn't include score
+        numComments: 0, // RSS doesn't include comment count
         createdUtc: post.pubDate ? new Date(post.pubDate) : new Date(),
         summary: analysis.summary,
         sentimentLabel: analysis.sentimentLabel,
