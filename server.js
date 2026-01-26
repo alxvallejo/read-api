@@ -410,7 +410,7 @@ app.get('/p/:fullname/:slug', async (req, res) => {
     const isComment = !!(post && ((post.name && post.name.startsWith('t1_')) || post.body));
     const articleTitle = (post && post.link_title) || slugToTitle(slug);
     const baseTitle = isComment
-      ? `Comment by u/${post?.author || 'unknown'}${articleTitle ? ` on "${articleTitle}"` : ''}`
+      ? articleTitle || 'Reddzit: Review your saved Reddit posts'
       : (post && post.title) || slugToTitle(slug) || 'Reddzit: Review your saved Reddit posts';
     const description = isComment
       ? (post && post.body ? String(post.body).slice(0, 200) : 'Review your saved Reddit posts with Reddzit.')
