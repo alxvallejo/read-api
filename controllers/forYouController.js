@@ -374,35 +374,54 @@ async function syncSubscriptions(req, res) {
 
     const { user } = await getUserFromToken(token);
 
-    // Fetch user's subscriptions from Reddit (up to 100)
-    const subsResponse = await fetch('https://oauth.reddit.com/subreddits/mine/subscriber?limit=100', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'User-Agent': USER_AGENT
+    // Fetch ALL user's subscriptions from Reddit (paginated)
+    const allSubreddits = [];
+    let after = null;
+    let pageCount = 0;
+    const maxPages = 10; // Safety limit: 10 pages * 100 = 1000 max subscriptions
+
+    do {
+      const url = `https://oauth.reddit.com/subreddits/mine/subscriber?limit=100${after ? `&after=${after}` : ''}`;
+      const subsResponse = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'User-Agent': USER_AGENT
+        }
+      });
+
+      if (!subsResponse.ok) {
+        return res.status(502).json({ error: 'Failed to fetch subscriptions from Reddit' });
+      }
+
+      const subsData = await subsResponse.json();
+      const pageSubreddits = (subsData.data?.children || []).map(c => c.data.display_name);
+      allSubreddits.push(...pageSubreddits);
+
+      after = subsData.data?.after;
+      pageCount++;
+    } while (after && pageCount < maxPages);
+
+    // Deduplicate subreddits
+    const subreddits = [...new Set(allSubreddits)];
+
+    // Delete old subscriptions and insert new ones in a transaction
+    await prisma.$transaction(async (tx) => {
+      await tx.userSubscription.deleteMany({
+        where: { userId: user.id }
+      });
+
+      if (subreddits.length > 0) {
+        await tx.userSubscription.createMany({
+          data: subreddits.map(subreddit => ({
+            userId: user.id,
+            subreddit
+          })),
+          skipDuplicates: true
+        });
       }
     });
 
-    if (!subsResponse.ok) {
-      return res.status(502).json({ error: 'Failed to fetch subscriptions from Reddit' });
-    }
-
-    const subsData = await subsResponse.json();
-    const subreddits = (subsData.data?.children || []).map(c => c.data.display_name);
-
-    // Delete old subscriptions and insert new ones
-    await prisma.userSubscription.deleteMany({
-      where: { userId: user.id }
-    });
-
-    if (subreddits.length > 0) {
-      await prisma.userSubscription.createMany({
-        data: subreddits.map(subreddit => ({
-          userId: user.id,
-          subreddit
-        }))
-      });
-    }
-
+    console.log(`Synced ${subreddits.length} subscriptions for user ${user.id} (${pageCount} pages)`);
     return res.json({
       success: true,
       count: subreddits.length,
@@ -963,13 +982,21 @@ async function getSuggestions(req, res) {
 
     const { user } = await getUserFromToken(token);
 
-    // Get user's existing subreddit affinities
+    // Get user's Reddit subscriptions (synced from Reddit API)
+    const userSubscriptions = await prisma.userSubscription.findMany({
+      where: { userId: user.id },
+      select: { subreddit: true }
+    });
+    const subscribedSubreddits = new Set(userSubscriptions.map(s => s.subreddit.toLowerCase()));
+    console.log(`User ${user.id} has ${userSubscriptions.length} synced subscriptions. Checking for webdev:`, subscribedSubreddits.has('webdev'));
+
+    // Get user's existing subreddit affinities from persona
     const persona = await prisma.userPersona.findUnique({
       where: { userId: user.id }
     });
 
     const existingAffinities = persona?.subredditAffinities || [];
-    const existingSubreddits = new Set(existingAffinities.map(a => a.name.toLowerCase()));
+    const affinitySubreddits = new Set(existingAffinities.map(a => a.name.toLowerCase()));
 
     // Get NOT_INTERESTED counts to exclude blocked subreddits
     const notInterestedCounts = await prisma.curatedPost.groupBy({
@@ -994,11 +1021,12 @@ async function getSuggestions(req, res) {
       orderBy: { sortOrder: 'asc' }
     });
 
-    // Filter out existing and blocked, limit to 8
+    // Filter out subscribed, affinities, and blocked - limit to 20
     const suggestions = subreddits
-      .filter(s => !existingSubreddits.has(s.name.toLowerCase()))
+      .filter(s => !subscribedSubreddits.has(s.name.toLowerCase()))
+      .filter(s => !affinitySubreddits.has(s.name.toLowerCase()))
       .filter(s => !blockedSubreddits.has(s.name.toLowerCase()))
-      .slice(0, 8)
+      .slice(0, 20)
       .map(s => ({
         name: s.name,
         category: s.category.name
