@@ -3,8 +3,15 @@ const { PrismaClient } = require('@prisma/client');
 const { Pool } = require('pg');
 const { PrismaPg } = require('@prisma/adapter-pg');
 const OpenAI = require('openai');
+const { LRUCache } = require('lru-cache');
 const rssService = require('../services/rssService');
 const { getAppOnlyAccessToken } = require('./redditProxyController');
+
+// Feed cache: stores computed feed results per user
+const feedCache = new LRUCache({
+  max: 1000, // Max 1000 users cached
+  ttl: 60 * 1000, // 60 second TTL
+});
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -251,6 +258,9 @@ async function recordAction(req, res) {
       });
     }
 
+    // Invalidate feed cache so next request excludes this post
+    feedCache.delete(`feed:${user.id}`);
+
     // Count saved posts
     const savedCount = await prisma.curatedPost.count({
       where: {
@@ -357,6 +367,9 @@ async function toggleStar(req, res) {
       }
     });
 
+    // Invalidate feed cache (starred subreddits affect feed priority)
+    feedCache.delete(`feed:${user.id}`);
+
     return res.json({ success: true });
   } catch (error) {
     console.error('toggleStar error:', error);
@@ -420,6 +433,9 @@ async function syncSubscriptions(req, res) {
         });
       }
     });
+
+    // Invalidate feed cache (subscriptions affect feed sources)
+    feedCache.delete(`feed:${user.id}`);
 
     console.log(`Synced ${subreddits.length} subscriptions for user ${user.id} (${pageCount} pages)`);
     return res.json({
@@ -604,6 +620,9 @@ Guidelines:
       }
     });
 
+    // Invalidate feed cache (persona affects feed subreddit selection)
+    feedCache.delete(`feed:${user.id}`);
+
     return res.json({
       persona: {
         keywords: persona.keywords,
@@ -755,6 +774,19 @@ async function getFeed(req, res) {
     }
 
     const { user } = await getUserFromToken(token);
+
+    // Check cache first (unless ?refresh=true)
+    const skipCache = req.query.refresh === 'true';
+    const cacheKey = `feed:${user.id}`;
+
+    if (!skipCache) {
+      const cached = feedCache.get(cacheKey);
+      if (cached) {
+        console.log(`[Cache HIT] Feed for user ${user.id}`);
+        return res.json(cached);
+      }
+    }
+    console.log(`[Cache MISS] Feed for user ${user.id}`);
 
     // b. Get the user's persona for subreddit recommendations
     const persona = await prisma.userPersona.findUnique({
@@ -953,7 +985,7 @@ async function getFeed(req, res) {
         .map(a => a.name);
     }
 
-    return res.json({
+    const response = {
       posts: topPosts,
       recommendedSubreddits,
       meta: {
@@ -962,7 +994,13 @@ async function getFeed(req, res) {
         subredditsFetched: subredditsToFetch.length,
         starredCount: starredSubreddits.length
       }
-    });
+    };
+
+    // Cache the response
+    feedCache.set(cacheKey, response);
+    console.log(`[Cache SET] Feed for user ${user.id} (${topPosts.length} posts)`);
+
+    return res.json(response);
   } catch (error) {
     console.error('getFeed error:', error);
     res.status(500).json({ error: 'Internal server error' });
