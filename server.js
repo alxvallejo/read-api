@@ -388,7 +388,7 @@ app.get('/p/:fullname', async (req, res) => {
 // Support slugged share URLs like /p/:fullname/:slug
 app.get('/p/:fullname/:slug', async (req, res) => {
   try {
-    const { fullname } = req.params;
+    const { fullname, slug } = req.params;
     const indexHtml = await readIndexHtml();
     if (!indexHtml) {
       return res.status(500).send('SSR not configured: FRONTEND_DIST_DIR missing or index.html not found');
@@ -401,10 +401,17 @@ app.get('/p/:fullname/:slug', async (req, res) => {
       // continue with defaults
     }
 
+    // Convert slug to readable title as fallback (replace hyphens, capitalize first letter)
+    const slugToTitle = (s) => {
+      if (!s) return '';
+      return s.replace(/-/g, ' ').replace(/^\w/, c => c.toUpperCase());
+    };
+
     const isComment = !!(post && ((post.name && post.name.startsWith('t1_')) || post.body));
+    const articleTitle = (post && post.link_title) || slugToTitle(slug);
     const baseTitle = isComment
-      ? `Comment by u/${post.author}${post && post.link_title ? ` on "${post.link_title}"` : ''}`
-      : (post && post.title) || 'Reddzit: Review your saved Reddit posts';
+      ? `Comment by u/${post?.author || 'unknown'}${articleTitle ? ` on "${articleTitle}"` : ''}`
+      : (post && post.title) || slugToTitle(slug) || 'Reddzit: Review your saved Reddit posts';
     const description = isComment
       ? (post && post.body ? String(post.body).slice(0, 200) : 'Review your saved Reddit posts with Reddzit.')
       : (post && post.selftext ? String(post.selftext).slice(0, 200) : 'Review your saved Reddit posts with Reddzit.');
