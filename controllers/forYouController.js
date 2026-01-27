@@ -7,10 +7,9 @@ const { LRUCache } = require('lru-cache');
 const rssService = require('../services/rssService');
 const { getAppOnlyAccessToken } = require('./redditProxyController');
 
-// Feed cache: stores computed feed results per user
+// Feed cache: stores computed feed results per user (persists until next report generation)
 const feedCache = new LRUCache({
   max: 1000, // Max 1000 users cached
-  ttl: 60 * 1000, // 60 second TTL
 });
 
 const openai = new OpenAI({
@@ -650,6 +649,29 @@ async function generateReport(req, res) {
 
     const { user } = await getUserFromToken(token);
 
+    // Check if previous report is older than 18 hours - if so, clear skipped posts
+    const existingReport = await prisma.forYouReport.findUnique({
+      where: { userId: user.id }
+    });
+
+    if (existingReport) {
+      const hoursSinceLastReport = (Date.now() - existingReport.generatedAt.getTime()) / (1000 * 60 * 60);
+      if (hoursSinceLastReport > 18) {
+        const [deletedPosts, deletedBlocks] = await Promise.all([
+          prisma.curatedPost.deleteMany({
+            where: {
+              userId: user.id,
+              action: { in: ['ALREADY_READ', 'NOT_INTERESTED'] }
+            }
+          }),
+          prisma.userBlockedSubreddit.deleteMany({
+            where: { userId: user.id }
+          })
+        ]);
+        console.log(`Cleared ${deletedPosts.count} skipped posts and ${deletedBlocks.count} blocked subreddits for user ${user.id} (report was ${Math.round(hoursSinceLastReport)}h old)`);
+      }
+    }
+
     // b. Get the selected model from request body
     const { model: selectedModel } = req.body;
     const validModels = ['gpt-4o-mini', 'gpt-4o', 'gpt-5.2'];
@@ -725,9 +747,17 @@ ${savedPosts.map((p, i) => `${i + 1}. **${p.title}** (r/${p.subreddit})`).join('
       }
     }
 
-    // g. Save the report to ForYouReport table
-    const report = await prisma.forYouReport.create({
-      data: {
+    // g. Save the report to ForYouReport table (one report per user)
+    const report = await prisma.forYouReport.upsert({
+      where: { userId: user.id },
+      update: {
+        model: model,
+        postCount: savedPosts.length,
+        content: reportContent,
+        status: 'PUBLISHED',
+        generatedAt: new Date()
+      },
+      create: {
         userId: user.id,
         model: model,
         postCount: savedPosts.length,
@@ -748,6 +778,9 @@ ${savedPosts.map((p, i) => `${i + 1}. **${p.title}** (r/${p.subreddit})`).join('
       }
     });
 
+    // Invalidate feed cache so next feed request fetches fresh posts
+    feedCache.delete(`feed:${user.id}`);
+
     // i. Return the report
     return res.json({
       report: {
@@ -760,6 +793,39 @@ ${savedPosts.map((p, i) => `${i + 1}. **${p.title}** (r/${p.subreddit})`).join('
     });
   } catch (error) {
     console.error('generateReport error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// GET /api/foryou/report
+async function getReport(req, res) {
+  try {
+    const token = extractToken(req);
+    if (!token) {
+      return res.status(401).json({ error: 'Authorization required' });
+    }
+
+    const { user } = await getUserFromToken(token);
+
+    const report = await prisma.forYouReport.findUnique({
+      where: { userId: user.id }
+    });
+
+    if (!report) {
+      return res.json({ report: null });
+    }
+
+    return res.json({
+      report: {
+        id: report.id,
+        content: report.content,
+        model: report.model,
+        postCount: report.postCount,
+        generatedAt: report.generatedAt.toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('getReport error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
@@ -823,8 +889,14 @@ async function getFeed(req, res) {
       _count: { subreddit: true }
     });
 
-    // Build sets for blocked (5+) and penalized (3-4) subreddits
-    const blockedSubreddits = new Set();
+    // e3. Get explicitly blocked subreddits
+    const explicitlyBlocked = await prisma.userBlockedSubreddit.findMany({
+      where: { userId: user.id },
+      select: { subreddit: true }
+    });
+
+    // Build sets for blocked (5+ not interested OR explicitly blocked) and penalized (3-4) subreddits
+    const blockedSubreddits = new Set(explicitlyBlocked.map(b => b.subreddit));
     const penalizedSubreddits = new Map(); // subreddit -> count
     for (const item of notInterestedCounts) {
       const count = item._count.subreddit;
@@ -1224,6 +1296,65 @@ async function subredditNotInterested(req, res) {
   }
 }
 
+/**
+ * POST /api/foryou/subreddit/block
+ * Block or unblock a subreddit (resets after 18h with new report)
+ */
+async function blockSubreddit(req, res) {
+  try {
+    const token = extractToken(req);
+    if (!token) {
+      return res.status(401).json({ error: 'Authorization required' });
+    }
+
+    const { user } = await getUserFromToken(token);
+
+    const { subreddit, blocked } = req.body;
+    if (!subreddit || typeof subreddit !== 'string') {
+      return res.status(400).json({ error: 'Missing subreddit' });
+    }
+
+    if (blocked === false) {
+      // Unblock: delete the record
+      await prisma.userBlockedSubreddit.deleteMany({
+        where: {
+          userId: user.id,
+          subreddit: subreddit
+        }
+      });
+      console.log(`User ${user.id} unblocked r/${subreddit}`);
+    } else {
+      // Block: upsert the record
+      await prisma.userBlockedSubreddit.upsert({
+        where: {
+          userId_subreddit: {
+            userId: user.id,
+            subreddit: subreddit
+          }
+        },
+        update: {},
+        create: {
+          userId: user.id,
+          subreddit: subreddit
+        }
+      });
+      console.log(`User ${user.id} blocked r/${subreddit}`);
+    }
+
+    // Invalidate feed cache
+    feedCache.delete(`feed:${user.id}`);
+
+    res.json({
+      success: true,
+      subreddit,
+      blocked: blocked !== false
+    });
+  } catch (error) {
+    console.error('blockSubreddit error:', error);
+    res.status(500).json({ error: 'Failed to update blocked subreddit' });
+  }
+}
+
 module.exports = {
   getPersona,
   getCurated,
@@ -1234,7 +1365,9 @@ module.exports = {
   refreshPersona,
   getFeed,
   generateReport,
+  getReport,
   getSuggestions,
   getSubredditPosts,
-  subredditNotInterested
+  subredditNotInterested,
+  blockSubreddit
 };

@@ -82,7 +82,7 @@ async function getTrendingFromRSS(subreddit = 'all', limit = 15) {
 
     return posts;
   } catch (error) {
-    console.error('RSS fetch error:', error.message);
+    console.error(`RSS fetch error for r/${subreddit}:`, error.message);
     // Return stale cache on error if available
     if (cache.data) {
       return cache.data;

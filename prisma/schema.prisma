@@ -429,6 +429,7 @@ model User {
   curatedPosts      CuratedPost[]
   subredditStars    UserSubredditStar[]
   subscriptions     UserSubscription[]
+  blockedSubreddits UserBlockedSubreddit[]
   forYouReports     ForYouReport[]
 
   @@index([redditUsername])
@@ -531,6 +532,20 @@ model UserSubscription {
   @@map("user_subscriptions")
 }
 
+// Temporarily blocked subreddits (reset after 18h when generating new report)
+model UserBlockedSubreddit {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  subreddit   String
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, subreddit])
+  @@index([userId])
+  @@map("user_blocked_subreddits")
+}
+
 model ForYouReport {
   id              String        @id @default(uuid())
   userId          String        @map("user_id")
@@ -549,7 +564,7 @@ model ForYouReport {
 
   user            User          @relation(fields: [userId], references: [id])
 
-  @@index([userId, createdAt(sort: Desc)])
+  @@unique([userId])
   @@map("for_you_reports")
 }
 
