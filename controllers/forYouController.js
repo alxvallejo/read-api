@@ -259,6 +259,12 @@ async function recordAction(req, res) {
       }
     });
 
+    // Invalidate feed cache so the post doesn't reappear
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { cachedFeed: null }
+    });
+
     return res.json({
       success: true,
       curatedCount: savedCount
