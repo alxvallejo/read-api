@@ -220,13 +220,22 @@ app.get('/api/hourly/:hour', dailyController.getHourlyReportByHour);
 app.get('/api/hourly-pulse/latest', dailyController.getLatestHourlyPulseReport);
 app.get('/api/hourly-pulse/:hour', dailyController.getHourlyPulseReportByHour);
 
-// Trending RSS API (no OAuth required)
+// Trending posts API (no OAuth required, uses Reddit's public JSON)
 app.get('/api/trending/rss', async (req, res) => {
   try {
-    const posts = await rssService.getTrendingFromRSS('all', 15);
+    const rawPosts = await rssService.getTopPostsFromJSON('all', 15, 'hot');
+    // Transform to match expected format
+    const posts = rawPosts.map(post => ({
+      id: post.id,
+      title: post.title,
+      subreddit: post.subreddit,
+      link: `https://www.reddit.com${post.permalink}`,
+      author: post.author,
+      pubDate: new Date(post.created_utc * 1000).toISOString(),
+    }));
     res.json({ posts });
   } catch (error) {
-    console.error('RSS endpoint error:', error.message);
+    console.error('Trending endpoint error:', error.message);
     res.status(500).json({ error: 'Failed to fetch trending posts' });
   }
 });
