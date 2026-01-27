@@ -639,18 +639,19 @@ async function generateReport(req, res) {
     if (existingReport) {
       const hoursSinceLastReport = (Date.now() - existingReport.generatedAt.getTime()) / (1000 * 60 * 60);
       if (hoursSinceLastReport > 18) {
-        const [deletedPosts, deletedBlocks] = await Promise.all([
+        const [deletedPosts, deactivatedBlocks] = await Promise.all([
           prisma.curatedPost.deleteMany({
             where: {
               userId: user.id,
               action: { in: ['ALREADY_READ', 'NOT_INTERESTED'] }
             }
           }),
-          prisma.userBlockedSubreddit.deleteMany({
-            where: { userId: user.id }
+          prisma.userBlockedSubreddit.updateMany({
+            where: { userId: user.id, isActive: true },
+            data: { isActive: false }
           })
         ]);
-        console.log(`Cleared ${deletedPosts.count} skipped posts and ${deletedBlocks.count} blocked subreddits for user ${user.id} (report was ${Math.round(hoursSinceLastReport)}h old)`);
+        console.log(`Cleared ${deletedPosts.count} skipped posts and deactivated ${deactivatedBlocks.count} blocked subreddits for user ${user.id} (report was ${Math.round(hoursSinceLastReport)}h old)`);
       }
     }
 
@@ -867,22 +868,36 @@ async function getFeed(req, res) {
       _count: { subreddit: true }
     });
 
-    // e3. Get explicitly blocked subreddits
-    const explicitlyBlocked = await prisma.userBlockedSubreddit.findMany({
+    // e3. Get blocked subreddits (active blocks and historical block counts)
+    const blockedRecords = await prisma.userBlockedSubreddit.findMany({
       where: { userId: user.id },
-      select: { subreddit: true }
+      select: { subreddit: true, isActive: true, blockCount: true }
     });
 
-    // Build sets for blocked (5+ not interested OR explicitly blocked) and penalized (3-4) subreddits
-    const blockedSubreddits = new Set(explicitlyBlocked.map(b => b.subreddit));
-    const penalizedSubreddits = new Map(); // subreddit -> count
+    // Build sets for blocked (active OR 5+ not interested) and penalized subreddits
+    const blockedSubreddits = new Set();
+    const penalizedSubreddits = new Map(); // subreddit -> penalty multiplier
+
+    // Add actively blocked subreddits
+    for (const record of blockedRecords) {
+      if (record.isActive) {
+        blockedSubreddits.add(record.subreddit);
+      } else if (record.blockCount >= 1) {
+        // Previously blocked subreddits get penalized based on block count
+        // blockCount 1 = 0.7x weight, 2 = 0.5x, 3+ = 0.3x
+        const penalty = record.blockCount >= 3 ? 0.3 : record.blockCount >= 2 ? 0.5 : 0.7;
+        penalizedSubreddits.set(record.subreddit, penalty);
+      }
+    }
+
+    // Add NOT_INTERESTED based blocks/penalties
     for (const item of notInterestedCounts) {
       const count = item._count.subreddit;
       if (count >= 5) {
         blockedSubreddits.add(item.subreddit);
         console.log(`Blocking r/${item.subreddit} (${count} not interested)`);
-      } else if (count >= 3) {
-        penalizedSubreddits.set(item.subreddit, count);
+      } else if (count >= 3 && !penalizedSubreddits.has(item.subreddit)) {
+        penalizedSubreddits.set(item.subreddit, 0.5);
         console.log(`Penalizing r/${item.subreddit} (${count} not interested)`);
       }
     }
@@ -902,8 +917,10 @@ async function getFeed(req, res) {
     // Add persona affinities (sorted by weight) - skip blocked, deprioritize penalized
     if (persona && Array.isArray(persona.subredditAffinities)) {
       const sortedAffinities = [...persona.subredditAffinities].sort((a, b) => {
-        const weightA = (a.weight || 0) * (penalizedSubreddits.has(a.name) ? 0.5 : 1);
-        const weightB = (b.weight || 0) * (penalizedSubreddits.has(b.name) ? 0.5 : 1);
+        const penaltyA = penalizedSubreddits.get(a.name) || 1;
+        const penaltyB = penalizedSubreddits.get(b.name) || 1;
+        const weightA = (a.weight || 0) * penaltyA;
+        const weightB = (b.weight || 0) * penaltyB;
         return weightB - weightA;
       });
       for (const affinity of sortedAffinities) {
@@ -1099,9 +1116,9 @@ async function getSuggestions(req, res) {
       distinct: ['subreddit']
     });
 
-    // Get explicitly blocked subreddits
+    // Get actively blocked subreddits
     const explicitlyBlocked = await prisma.userBlockedSubreddit.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, isActive: true },
       select: { subreddit: true }
     });
 
@@ -1299,37 +1316,54 @@ async function blockSubreddit(req, res) {
       return res.status(400).json({ error: 'Missing subreddit' });
     }
 
-    if (blocked === false) {
-      // Unblock: delete the record
-      await prisma.userBlockedSubreddit.deleteMany({
-        where: {
+    // Check if record exists
+    const existing = await prisma.userBlockedSubreddit.findUnique({
+      where: {
+        userId_subreddit: {
           userId: user.id,
           subreddit: subreddit
         }
-      });
+      }
+    });
+
+    let record;
+    if (blocked === false) {
+      // Unblock: set isActive=false (keep record for count history)
+      if (existing) {
+        record = await prisma.userBlockedSubreddit.update({
+          where: { id: existing.id },
+          data: { isActive: false }
+        });
+      }
       console.log(`User ${user.id} unblocked r/${subreddit}`);
     } else {
-      // Block: upsert the record
-      await prisma.userBlockedSubreddit.upsert({
-        where: {
-          userId_subreddit: {
-            userId: user.id,
-            subreddit: subreddit
+      // Block: increment count and set isActive=true
+      if (existing) {
+        record = await prisma.userBlockedSubreddit.update({
+          where: { id: existing.id },
+          data: {
+            isActive: true,
+            blockCount: existing.blockCount + 1
           }
-        },
-        update: {},
-        create: {
-          userId: user.id,
-          subreddit: subreddit
-        }
-      });
-      console.log(`User ${user.id} blocked r/${subreddit}`);
+        });
+      } else {
+        record = await prisma.userBlockedSubreddit.create({
+          data: {
+            userId: user.id,
+            subreddit: subreddit,
+            isActive: true,
+            blockCount: 1
+          }
+        });
+      }
+      console.log(`User ${user.id} blocked r/${subreddit} (count: ${record.blockCount})`);
     }
 
     res.json({
       success: true,
       subreddit,
-      blocked: blocked !== false
+      blocked: blocked !== false,
+      blockCount: record?.blockCount || 0
     });
   } catch (error) {
     console.error('blockSubreddit error:', error);

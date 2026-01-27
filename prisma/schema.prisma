@@ -533,12 +533,15 @@ model UserSubscription {
   @@map("user_subscriptions")
 }
 
-// Temporarily blocked subreddits (reset after 18h when generating new report)
+// Blocked subreddits with count tracking (isActive reset after 18h, count persists)
 model UserBlockedSubreddit {
   id          String    @id @default(uuid())
   userId      String    @map("user_id")
   subreddit   String
+  blockCount  Int       @default(1) @map("block_count")
+  isActive    Boolean   @default(true) @map("is_active")
   createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   user        User      @relation(fields: [userId], references: [id])
 
