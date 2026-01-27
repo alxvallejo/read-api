@@ -3,14 +3,8 @@ const { PrismaClient } = require('@prisma/client');
 const { Pool } = require('pg');
 const { PrismaPg } = require('@prisma/adapter-pg');
 const OpenAI = require('openai');
-const { LRUCache } = require('lru-cache');
 const rssService = require('../services/rssService');
 const { getAppOnlyAccessToken } = require('./redditProxyController');
-
-// Feed cache: stores computed feed results per user (persists until next report generation)
-const feedCache = new LRUCache({
-  max: 1000, // Max 1000 users cached
-});
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -257,9 +251,6 @@ async function recordAction(req, res) {
       });
     }
 
-    // Invalidate feed cache so next request excludes this post
-    feedCache.delete(`feed:${user.id}`);
-
     // Count saved posts
     const savedCount = await prisma.curatedPost.count({
       where: {
@@ -366,9 +357,6 @@ async function toggleStar(req, res) {
       }
     });
 
-    // Invalidate feed cache (starred subreddits affect feed priority)
-    feedCache.delete(`feed:${user.id}`);
-
     return res.json({ success: true });
   } catch (error) {
     console.error('toggleStar error:', error);
@@ -432,9 +420,6 @@ async function syncSubscriptions(req, res) {
         });
       }
     });
-
-    // Invalidate feed cache (subscriptions affect feed sources)
-    feedCache.delete(`feed:${user.id}`);
 
     console.log(`Synced ${subreddits.length} subscriptions for user ${user.id} (${pageCount} pages)`);
     return res.json({
@@ -619,9 +604,6 @@ Guidelines:
       }
     });
 
-    // Invalidate feed cache (persona affects feed subreddit selection)
-    feedCache.delete(`feed:${user.id}`);
-
     return res.json({
       persona: {
         keywords: persona.keywords,
@@ -779,7 +761,7 @@ ${savedPosts.map((p, i) => `${i + 1}. **${p.title}** (r/${p.subreddit})`).join('
     });
 
     // Invalidate feed cache so next feed request fetches fresh posts
-    feedCache.delete(`feed:${user.id}`);
+    await prisma.user.update({ where: { id: user.id }, data: { cachedFeed: null } });
 
     // i. Return the report
     return res.json({
@@ -841,16 +823,12 @@ async function getFeed(req, res) {
 
     const { user } = await getUserFromToken(token);
 
-    // Check cache first (unless ?refresh=true)
+    // Check database cache first (unless ?refresh=true)
     const skipCache = req.query.refresh === 'true';
-    const cacheKey = `feed:${user.id}`;
 
-    if (!skipCache) {
-      const cached = feedCache.get(cacheKey);
-      if (cached) {
-        console.log(`[Cache HIT] Feed for user ${user.id}`);
-        return res.json(cached);
-      }
+    if (!skipCache && user.cachedFeed) {
+      console.log(`[Cache HIT] Feed for user ${user.id}`);
+      return res.json(user.cachedFeed);
     }
     console.log(`[Cache MISS] Feed for user ${user.id}`);
 
@@ -1068,8 +1046,11 @@ async function getFeed(req, res) {
       }
     };
 
-    // Cache the response
-    feedCache.set(cacheKey, response);
+    // Cache the response in database
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { cachedFeed: response }
+    });
     console.log(`[Cache SET] Feed for user ${user.id} (${topPosts.length} posts)`);
 
     return res.json(response);
@@ -1108,22 +1089,26 @@ async function getSuggestions(req, res) {
     const existingAffinities = persona?.subredditAffinities || [];
     const affinitySubreddits = new Set(existingAffinities.map(a => a.name.toLowerCase()));
 
-    // Get NOT_INTERESTED counts to exclude blocked subreddits
-    const notInterestedCounts = await prisma.curatedPost.groupBy({
-      by: ['subreddit'],
+    // Get subreddits user marked as not interested (any count)
+    const notInterestedSubreddits = await prisma.curatedPost.findMany({
       where: {
         userId: user.id,
         action: 'NOT_INTERESTED'
       },
-      _count: { subreddit: true }
+      select: { subreddit: true },
+      distinct: ['subreddit']
     });
 
-    const blockedSubreddits = new Set();
-    for (const item of notInterestedCounts) {
-      if (item._count.subreddit >= 5) {
-        blockedSubreddits.add(item.subreddit.toLowerCase());
-      }
-    }
+    // Get explicitly blocked subreddits
+    const explicitlyBlocked = await prisma.userBlockedSubreddit.findMany({
+      where: { userId: user.id },
+      select: { subreddit: true }
+    });
+
+    const blockedSubreddits = new Set([
+      ...notInterestedSubreddits.map(p => p.subreddit.toLowerCase()),
+      ...explicitlyBlocked.map(b => b.subreddit.toLowerCase())
+    ]);
 
     // Get curated subreddits from categories
     const subreddits = await prisma.subreddit.findMany({
@@ -1340,9 +1325,6 @@ async function blockSubreddit(req, res) {
       });
       console.log(`User ${user.id} blocked r/${subreddit}`);
     }
-
-    // Invalidate feed cache
-    feedCache.delete(`feed:${user.id}`);
 
     res.json({
       success: true,

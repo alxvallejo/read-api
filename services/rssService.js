@@ -33,6 +33,11 @@ const JSON_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
  * No OAuth required, no rate limits
  */
 async function getTrendingFromRSS(subreddit = 'all', limit = 15) {
+  // Skip r/all - Reddit blocks RSS from cloud IPs (403)
+  if (subreddit === 'all') {
+    return [];
+  }
+
   const now = Date.now();
   const cacheKey = `${subreddit}-${limit}`;
 

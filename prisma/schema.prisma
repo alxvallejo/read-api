@@ -421,6 +421,7 @@ model User {
   proExpiresAt    DateTime? @map("pro_expires_at")
   stripeCustomerId String?  @map("stripe_customer_id")
   isAdmin         Boolean   @default(false) @map("is_admin")
+  cachedFeed      Json?     @map("cached_feed")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
