@@ -432,6 +432,7 @@ model User {
   subscriptions     UserSubscription[]
   blockedSubreddits UserBlockedSubreddit[]
   forYouReports     ForYouReport[]
+  quotes            Quote[]
 
   @@index([redditUsername])
   @@index([stripeCustomerId])
@@ -704,4 +705,26 @@ enum JobStatus {
   RUNNING
   COMPLETED
   FAILED
+}
+
+// ============ Quotes Feature ============
+
+model Quote {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  postId      String   @map("post_id")
+  text        String
+  note        String?
+  tags        Json     @default("[]")
+  sourceUrl   String   @map("source_url")
+  subreddit   String
+  postTitle   String   @map("post_title")
+  author      String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("quotes")
 }
