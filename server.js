@@ -204,6 +204,7 @@ const briefingController = require('./controllers/briefingController.js');
 const userController = require('./controllers/userController.js');
 const adminController = require('./controllers/adminController.js');
 const forYouController = require('./controllers/forYouController');
+const quotesController = require('./controllers/quotesController');
 
 // Daily Pulse API
 app.get('/api/daily/latest', dailyController.getLatestReport);
@@ -330,6 +331,12 @@ app.get('/api/foryou/suggestions', forYouController.getSuggestions);
 app.get('/api/subreddit/:name/posts', forYouController.getSubredditPosts);
 app.post('/api/foryou/subreddit-not-interested', forYouController.subredditNotInterested);
 app.post('/api/foryou/subreddit/block', forYouController.blockSubreddit);
+
+// Quote routes
+app.get('/api/quotes', quotesController.listQuotes);
+app.post('/api/quotes', quotesController.createQuote);
+app.put('/api/quotes/:id', quotesController.updateQuote);
+app.delete('/api/quotes/:id', quotesController.deleteQuote);
 
 // Admin API (protected)
 app.get('/api/admin/stats', adminController.requireAdmin, adminController.getStats);
