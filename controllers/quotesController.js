@@ -72,8 +72,15 @@ async function listQuotes(req, res) {
 
     const { user } = await getUserFromToken(token);
 
+    const { storyId } = req.query;
+
+    const where = { userId: user.id };
+    if (storyId) {
+      where.storyId = storyId;
+    }
+
     const quotes = await prisma.quote.findMany({
-      where: { userId: user.id },
+      where,
       orderBy: { createdAt: 'desc' }
     });
 
@@ -88,6 +95,7 @@ async function listQuotes(req, res) {
         author: q.author,
         note: q.note,
         tags: q.tags,
+        storyId: q.storyId,
         createdAt: q.createdAt.toISOString(),
         updatedAt: q.updatedAt.toISOString()
       })),
@@ -109,26 +117,45 @@ async function createQuote(req, res) {
 
     const { user } = await getUserFromToken(token);
 
-    const { postId, text, sourceUrl, subreddit, postTitle, author, note, tags } = req.body;
+    const { postId, text, sourceUrl, subreddit, postTitle, author, note, tags, storyId, isExternal, pageUrl, pageTitle } = req.body;
 
     // Validate required fields
-    if (!postId || !text || !sourceUrl || !subreddit || !postTitle || !author) {
+    if (!text || !sourceUrl) {
       return res.status(400).json({
-        error: 'Missing required fields: postId, text, sourceUrl, subreddit, postTitle, author'
+        error: 'Missing required fields: text, sourceUrl'
       });
+    }
+
+    if (!isExternal && (!postId || !subreddit || !postTitle || !author)) {
+      return res.status(400).json({
+        error: 'Missing required fields for Reddit quotes: postId, subreddit, postTitle, author'
+      });
+    }
+
+    if (storyId) {
+      const story = await prisma.story.findFirst({
+        where: { id: storyId, userId: user.id }
+      });
+      if (!story) {
+        return res.status(400).json({ error: 'Story not found' });
+      }
     }
 
     const quote = await prisma.quote.create({
       data: {
         userId: user.id,
-        postId,
+        postId: postId || null,
         text,
         sourceUrl,
-        subreddit,
-        postTitle,
-        author,
+        subreddit: subreddit || '',
+        postTitle: postTitle || '',
+        author: author || '',
         note: note || null,
-        tags: tags || []
+        tags: tags || [],
+        storyId: storyId || null,
+        isExternal: isExternal || false,
+        pageUrl: pageUrl || null,
+        pageTitle: pageTitle || null
       }
     });
 
@@ -143,6 +170,7 @@ async function createQuote(req, res) {
         author: quote.author,
         note: quote.note,
         tags: quote.tags,
+        storyId: quote.storyId,
         createdAt: quote.createdAt.toISOString(),
         updatedAt: quote.updatedAt.toISOString()
       }
@@ -176,14 +204,24 @@ async function updateQuote(req, res) {
       return res.status(404).json({ error: 'Quote not found' });
     }
 
-    const { note, tags } = req.body;
+    const { note, tags, storyId } = req.body;
 
-    // Only allow updating note and tags
+    if (storyId !== undefined && storyId !== null) {
+      const story = await prisma.story.findFirst({
+        where: { id: storyId, userId: user.id }
+      });
+      if (!story) {
+        return res.status(400).json({ error: 'Story not found' });
+      }
+    }
+
+    // Only allow updating note, tags, and storyId
     const quote = await prisma.quote.update({
       where: { id },
       data: {
         note: note !== undefined ? note : existingQuote.note,
-        tags: tags !== undefined ? tags : existingQuote.tags
+        tags: tags !== undefined ? tags : existingQuote.tags,
+        storyId: storyId !== undefined ? storyId : existingQuote.storyId
       }
     });
 
@@ -198,6 +236,7 @@ async function updateQuote(req, res) {
         author: quote.author,
         note: quote.note,
         tags: quote.tags,
+        storyId: quote.storyId,
         createdAt: quote.createdAt.toISOString(),
         updatedAt: quote.updatedAt.toISOString()
       }
