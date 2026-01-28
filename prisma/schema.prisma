@@ -421,6 +421,8 @@ model User {
   proExpiresAt    DateTime? @map("pro_expires_at")
   stripeCustomerId String?  @map("stripe_customer_id")
   isAdmin         Boolean   @default(false) @map("is_admin")
+  bio              String?
+  displayName      String?   @map("display_name")
   cachedFeed      Json?     @map("cached_feed")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
@@ -433,6 +435,7 @@ model User {
   blockedSubreddits UserBlockedSubreddit[]
   forYouReports     ForYouReport[]
   quotes            Quote[]
+  stories           Story[]
 
   @@index([redditUsername])
   @@index([stripeCustomerId])
@@ -707,12 +710,40 @@ enum JobStatus {
   FAILED
 }
 
+// ============ Stories Feature ============
+
+enum StoryStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model Story {
+  id          String      @id @default(uuid())
+  userId      String      @map("user_id")
+  title       String
+  slug        String
+  description String?
+  content     Json        @default("{}")
+  status      StoryStatus @default(DRAFT)
+  publishedAt DateTime?   @map("published_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  user        User        @relation(fields: [userId], references: [id])
+  quotes      Quote[]
+
+  @@unique([userId, slug])
+  @@index([userId, updatedAt(sort: Desc)])
+  @@index([status])
+  @@map("stories")
+}
+
 // ============ Quotes Feature ============
 
 model Quote {
   id          String   @id @default(uuid())
   userId      String   @map("user_id")
-  postId      String   @map("post_id")
+  postId      String?  @map("post_id")
   text        String
   note        String?
   tags        Json     @default("[]")
@@ -720,11 +751,17 @@ model Quote {
   subreddit   String
   postTitle   String   @map("post_title")
   author      String
+  storyId     String?  @map("story_id")
+  isExternal  Boolean  @default(false) @map("is_external")
+  pageUrl     String?  @map("page_url")
+  pageTitle   String?  @map("page_title")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   user        User     @relation(fields: [userId], references: [id])
+  story       Story?   @relation(fields: [storyId], references: [id])
 
   @@index([userId, createdAt(sort: Desc)])
+  @@index([storyId])
   @@map("quotes")
 }
