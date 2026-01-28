@@ -205,6 +205,7 @@ const userController = require('./controllers/userController.js');
 const adminController = require('./controllers/adminController.js');
 const forYouController = require('./controllers/forYouController');
 const quotesController = require('./controllers/quotesController');
+const storiesController = require('./controllers/storiesController');
 
 // Daily Pulse API
 app.get('/api/daily/latest', dailyController.getLatestReport);
@@ -337,6 +338,15 @@ app.get('/api/quotes', quotesController.listQuotes);
 app.post('/api/quotes', quotesController.createQuote);
 app.put('/api/quotes/:id', quotesController.updateQuote);
 app.delete('/api/quotes/:id', quotesController.deleteQuote);
+
+// Story routes
+app.get('/api/stories', storiesController.listStories);
+app.post('/api/stories', storiesController.createStory);
+app.get('/api/stories/:id', storiesController.getStory);
+app.put('/api/stories/:id', storiesController.updateStory);
+app.delete('/api/stories/:id', storiesController.deleteStory);
+app.post('/api/stories/:id/publish', storiesController.publishStory);
+app.post('/api/stories/:id/unpublish', storiesController.unpublishStory);
 
 // Admin API (protected)
 app.get('/api/admin/stats', adminController.requireAdmin, adminController.getStats);
