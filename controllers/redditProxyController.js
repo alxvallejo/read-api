@@ -1,13 +1,16 @@
 const fetch = require('node-fetch');
 
-const UA = process.env.USER_AGENT || 'Reddzit/1.0';
-const REDDIT_CLIENT_ID = process.env.REDDIT_CLIENT_ID;
-const REDDIT_CLIENT_SECRET = process.env.REDDIT_CLIENT_SECRET;
-const REDDIT_REDIRECT_URI = process.env.REDDIT_REDIRECT_URI;
+// Read env vars dynamically to ensure they're loaded after dotenv.config()
+const getUA = () => process.env.USER_AGENT || 'Reddzit/1.0';
+const getClientId = () => process.env.REDDIT_CLIENT_ID;
+const getClientSecret = () => process.env.REDDIT_CLIENT_SECRET;
+const getRedirectUri = () => process.env.REDDIT_REDIRECT_URI;
 
 function getBasicAuthHeader() {
-  if (!REDDIT_CLIENT_ID || !REDDIT_CLIENT_SECRET) return null;
-  const credentials = Buffer.from(`${REDDIT_CLIENT_ID}:${REDDIT_CLIENT_SECRET}`).toString('base64');
+  const clientId = getClientId();
+  const clientSecret = getClientSecret();
+  if (!clientId || !clientSecret) return null;
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
   return `Basic ${credentials}`;
 }
 
@@ -35,7 +38,7 @@ async function getAppOnlyAccessToken() {
     headers: {
       'Authorization': authHeader,
       'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': UA,
+      'User-Agent': getUA(),
     },
     body: params,
   });
@@ -88,7 +91,7 @@ const redditProxy = {
       const r = await redditProxy.proxyRequest('https://oauth.reddit.com/api/v1/me', {
         headers: {
           Authorization: passAuth,
-          'User-Agent': UA,
+          'User-Agent': getUA(),
         },
       });
       if (r.json !== null) return res.status(r.status).json(r.json);
@@ -118,7 +121,7 @@ const redditProxy = {
       const r = await redditProxy.proxyRequest(url, {
         headers: {
           Authorization: passAuth,
-          'User-Agent': UA,
+          'User-Agent': getUA(),
         },
       });
       if (r.json !== null) return res.status(r.status).json(r.json);
@@ -143,7 +146,7 @@ const redditProxy = {
         headers: {
           'Authorization': authHeader,
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': UA
+          'User-Agent': getUA()
         },
         body: queryString.stringify({ id })
       });
@@ -169,7 +172,7 @@ const redditProxy = {
         headers: {
           'Authorization': authHeader,
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': UA
+          'User-Agent': getUA()
         },
         body: queryString.stringify({ id })
       });
@@ -193,7 +196,7 @@ const redditProxy = {
       const r = await redditProxy.proxyRequest(`https://oauth.reddit.com/by_id/${fullname}`, {
         headers: {
           Authorization: passAuth,
-          'User-Agent': UA,
+          'User-Agent': getUA(),
         },
       });
       if (r.json !== null) return res.status(r.status).json(r.json);
@@ -223,7 +226,7 @@ const redditProxy = {
       const r = await redditProxy.proxyRequest(url, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
-          'User-Agent': UA,
+          'User-Agent': getUA(),
         }
       });
       if (r.json !== null) return res.status(r.status).json(r.json);
@@ -250,7 +253,7 @@ const redditProxy = {
         headers: {
           'Authorization': `Basic ${credentials}`,
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': UA
+          'User-Agent': getUA()
         },
         body: queryString.stringify({
           grant_type: 'authorization_code',
@@ -269,16 +272,19 @@ const redditProxy = {
   async oauthToken(req, res) {
     try {
       const { code } = req.body || {};
-      console.log('oauthToken request', { hasCode: !!code, redirectUri: REDDIT_REDIRECT_URI || null });
+      const redirectUri = getRedirectUri();
+      const clientId = getClientId();
+      const clientSecret = getClientSecret();
+      console.log('oauthToken request', { hasCode: !!code, redirectUri: redirectUri || null });
       if (!code) {
         return res.status(400).json({ error: 'invalid_request', error_description: 'Missing code' });
       }
       const authHeader = getBasicAuthHeader();
-      if (!authHeader || !REDDIT_REDIRECT_URI) {
+      if (!authHeader || !redirectUri) {
         console.error('oauthToken server_config', {
-          hasClientId: !!REDDIT_CLIENT_ID,
-          hasClientSecret: !!REDDIT_CLIENT_SECRET,
-          hasRedirect: !!REDDIT_REDIRECT_URI,
+          hasClientId: !!clientId,
+          hasClientSecret: !!clientSecret,
+          hasRedirect: !!redirectUri,
         });
         return res.status(500).json({ error: 'server_config', message: 'Missing Reddit env vars' });
       }
@@ -286,13 +292,13 @@ const redditProxy = {
       const params = new URLSearchParams({
         grant_type: 'authorization_code',
         code,
-        redirect_uri: REDDIT_REDIRECT_URI,
+        redirect_uri: redirectUri,
       });
 
       console.log('oauthToken DEBUG', {
-        clientIdPrefix: REDDIT_CLIENT_ID?.slice(0, 5),
-        clientIdLength: REDDIT_CLIENT_ID?.length,
-        redirectUri: REDDIT_REDIRECT_URI,
+        clientIdPrefix: clientId?.slice(0, 5),
+        clientIdLength: clientId?.length,
+        redirectUri: redirectUri,
         codeLength: code?.length,
         codePreview: code?.slice(0, 10) + '...',
         bodyParams: params.toString(),
@@ -303,7 +309,7 @@ const redditProxy = {
         headers: {
           'Authorization': authHeader,
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': UA,
+          'User-Agent': getUA(),
         },
         body: params,
       });
@@ -343,7 +349,7 @@ const redditProxy = {
         headers: {
           'Authorization': authHeader,
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': UA,
+          'User-Agent': getUA(),
         },
         body: params,
       });
@@ -368,7 +374,7 @@ const redditProxy = {
       const url = `https://www.reddit.com/subreddits/popular.json?limit=${Math.min(parseInt(limit) || 25, 100)}`;
       
       const r = await redditProxy.proxyRequest(url, {
-        headers: { 'User-Agent': UA }
+        headers: { 'User-Agent': getUA() }
       });
       
       if (r.json !== null) {
@@ -406,7 +412,7 @@ const redditProxy = {
       const r = await redditProxy.proxyRequest(url, {
         headers: {
           Authorization: passAuth,
-          'User-Agent': UA,
+          'User-Agent': getUA(),
         },
       });
 
@@ -451,7 +457,7 @@ const redditProxy = {
         // Fetch popular and randomly sample
         const popularUrl = `https://www.reddit.com/subreddits/popular.json?limit=50`;
         const popRes = await redditProxy.proxyRequest(popularUrl, {
-          headers: { 'User-Agent': UA }
+          headers: { 'User-Agent': getUA() }
         });
         
         if (popRes.json?.data?.children) {
@@ -483,7 +489,7 @@ const redditProxy = {
         try {
           const subUrl = `https://www.reddit.com/r/${encodeURIComponent(sub)}/hot.json?limit=${postLimit}`;
           const subRes = await redditProxy.proxyRequest(subUrl, {
-            headers: { 'User-Agent': UA }
+            headers: { 'User-Agent': getUA() }
           });
           
           if (subRes.json?.data?.children) {
