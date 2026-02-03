@@ -79,12 +79,14 @@ jobs:
             tar -xzf /tmp/read-api.tar.gz -C /var/www/read-api --no-same-owner --no-same-permissions -m || true
             rm -f /tmp/read-api.tar.gz
             cd /var/www/read-api
-            
+
             PM2="/var/www/read-api/node_modules/.bin/pm2"
-            
-            # Extract DATABASE_URL from PM2 env for Prisma
-            if "$PM2" list | grep -q "read-api"; then
-              export DATABASE_URL=$("$PM2" env 0 | grep '^DATABASE_URL:' | sed 's/^DATABASE_URL: *//')
+
+            # Source the server's .env for DATABASE_URL (needed by Prisma migrate)
+            if [ -f /var/www/read-api/.env ]; then
+              set -a
+              . /var/www/read-api/.env
+              set +a
             fi
             echo "DATABASE_URL is set: ${DATABASE_URL:+yes}"
             
