@@ -15,6 +15,13 @@ const { PrismaPg } = require('@prisma/adapter-pg');
 const app = express();
 const port = process.env.PORT || 3000;
 const nodeFetch = require('node-fetch');
+const { LRUCache } = require('lru-cache');
+
+// Cache Reddit post data for share previews — post metadata is effectively immutable
+const postCache = new LRUCache({
+  max: 500,               // max entries (each is a small post object)
+  ttl: 1000 * 60 * 60,    // 1 hour
+});
 
 // Prisma client for API status tracking
 const connectionString = process.env.DATABASE_URL;
@@ -67,6 +74,10 @@ function pickPreviewImage(post) {
 }
 
 async function fetchRedditPublic(fullname) {
+  // Return cached post data if available
+  const cached = postCache.get(fullname);
+  if (cached !== undefined) return cached;
+
   // Check if API is currently restricted before making a call
   const isRestricted = await redditService.isApiRestricted(prisma);
   if (isRestricted) {
@@ -99,7 +110,12 @@ async function fetchRedditPublic(fullname) {
 
   const json = await r.json();
   const post = json && json.data && json.data.children && json.data.children[0] && json.data.children[0].data;
-  return post || null;
+  const result = post || null;
+
+  // Cache the result (including null) to avoid re-fetching missing posts
+  postCache.set(fullname, result);
+
+  return result;
 }
 
 function injectMeta(html, meta) {
@@ -405,7 +421,7 @@ app.get('/p/:fullname', async (req, res) => {
     });
 
     res.set('Content-Type', 'text/html; charset=utf-8');
-    res.set('Cache-Control', 'public, max-age=60');
+    res.set('Cache-Control', 'public, max-age=3600');
     res.send(injected);
   } catch (err) {
     console.error('SSR route error', err);
@@ -457,7 +473,7 @@ app.get('/p/:fullname/:slug', async (req, res) => {
     });
 
     res.set('Content-Type', 'text/html; charset=utf-8');
-    res.set('Cache-Control', 'public, max-age=60');
+    res.set('Cache-Control', 'public, max-age=3600');
     res.send(injected);
   } catch (err) {
     console.error('SSR route error', err);
