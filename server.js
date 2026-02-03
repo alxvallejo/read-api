@@ -22,6 +22,7 @@ const postCache = new LRUCache({
   max: 500,               // max entries (each is a small post object)
   ttl: 1000 * 60 * 60,    // 1 hour
 });
+const cacheStats = { hits: 0, misses: 0 };
 
 // Prisma client for API status tracking
 const connectionString = process.env.DATABASE_URL;
@@ -76,7 +77,11 @@ function pickPreviewImage(post) {
 async function fetchRedditPublic(fullname) {
   // Return cached post data if available
   const cached = postCache.get(fullname);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    cacheStats.hits++;
+    return cached;
+  }
+  cacheStats.misses++;
 
   // Check if API is currently restricted before making a call
   const isRestricted = await redditService.isApiRestricted(prisma);
@@ -381,6 +386,18 @@ app.get('/api/admin/jobs/:name/runs', adminController.requireAdmin, adminControl
 
 // Reddit API Usage
 app.get('/api/admin/reddit-usage', adminController.requireAdmin, adminController.getRedditUsage);
+
+// Share preview cache stats
+app.get('/api/admin/cache-stats', adminController.requireAdmin, (req, res) => {
+  const total = cacheStats.hits + cacheStats.misses;
+  res.json({
+    size: postCache.size,
+    max: postCache.max,
+    hits: cacheStats.hits,
+    misses: cacheStats.misses,
+    hitRate: total > 0 ? Math.round((cacheStats.hits / total) * 100) : 0,
+  });
+});
 app.get('/api/admin/reddit-usage/logs', adminController.requireAdmin, adminController.getRedditUsageLogs);
 app.delete('/api/admin/reddit-usage/logs', adminController.requireAdmin, adminController.deleteRedditUsageLogs);
 
