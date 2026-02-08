@@ -126,8 +126,18 @@ async function fetchRedditPublic(fullname) {
 function injectMeta(html, meta) {
   const headOpen = html.indexOf('<head>');
   if (headOpen === -1) return html;
-  const before = html.slice(0, headOpen + '<head>'.length);
-  const after = html.slice(headOpen + '<head>'.length);
+
+  // Strip existing static OG, Twitter, title, and canonical tags so we don't end up
+  // with duplicates (e.g. two og:image values causing platforms to show both images).
+  let cleaned = html;
+  cleaned = cleaned.replace(/<meta\s+property="og:[^"]*"\s+content="[^"]*"\s*\/?>/gi, '');
+  cleaned = cleaned.replace(/<meta\s+property="twitter:[^"]*"\s+content="[^"]*"\s*\/?>/gi, '');
+  cleaned = cleaned.replace(/<meta\s+name="twitter:[^"]*"\s+content="[^"]*"\s*\/?>/gi, '');
+  cleaned = cleaned.replace(/<title>[^<]*<\/title>/i, '');
+
+  const headOpenCleaned = cleaned.indexOf('<head>');
+  const before = cleaned.slice(0, headOpenCleaned + '<head>'.length);
+  const after = cleaned.slice(headOpenCleaned + '<head>'.length);
   const tags = [
     `<title>${escapeHtml(meta.title)}</title>`,
     `<meta property="og:title" content="${escapeHtml(meta.ogTitle)}">`,
