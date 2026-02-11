@@ -804,6 +804,12 @@ async function getReport(req, res) {
       return res.json({ report: null });
     }
 
+    // Treat reports older than 18 hours as stale
+    const hoursSinceReport = (Date.now() - report.generatedAt.getTime()) / (1000 * 60 * 60);
+    if (hoursSinceReport > 18) {
+      return res.json({ report: null });
+    }
+
     return res.json({
       report: {
         id: report.id,
