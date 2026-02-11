@@ -840,8 +840,13 @@ async function getFeed(req, res) {
     const skipCache = req.query.refresh === 'true';
 
     if (!skipCache && user.cachedFeed) {
-      console.log(`[Cache HIT] Feed for user ${user.id}`);
-      return res.json(user.cachedFeed);
+      const cachedAt = user.cachedFeed.cachedAt;
+      const hoursSinceCached = cachedAt ? (Date.now() - new Date(cachedAt).getTime()) / (1000 * 60 * 60) : Infinity;
+      if (hoursSinceCached <= 18) {
+        console.log(`[Cache HIT] Feed for user ${user.id} (${Math.round(hoursSinceCached)}h old)`);
+        return res.json(user.cachedFeed);
+      }
+      console.log(`[Cache STALE] Feed for user ${user.id} (${Math.round(hoursSinceCached)}h old)`);
     }
     console.log(`[Cache MISS] Feed for user ${user.id}`);
 
@@ -1067,6 +1072,7 @@ async function getFeed(req, res) {
     const response = {
       posts: topPosts,
       recommendedSubreddits,
+      cachedAt: new Date().toISOString(),
       meta: {
         totalFetched: allPosts.length,
         totalFiltered: filteredPosts.length,
