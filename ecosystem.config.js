@@ -4,7 +4,7 @@ require('dotenv').config();
 const ENABLED = {
   'read-api': true,
   'discover': true,
-  'top-posts': true,
+  'top-posts': false,  // Disabled — frontend fetches directly from Reddit RSS
   'daily-report': false,  // Disabled
 };
 
