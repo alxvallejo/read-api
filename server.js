@@ -71,7 +71,7 @@ function pickPreviewImage(post) {
   } catch (_) {}
   const thumb = post && post.thumbnail;
   if (thumb && /^https?:\/\//.test(thumb)) return thumb;
-  return PUBLIC_BASE_URL ? PUBLIC_BASE_URL + '/favicon.png' : '/favicon.png';
+  return PUBLIC_BASE_URL ? PUBLIC_BASE_URL + '/reddzit-hero.png' : '/reddzit-hero.png';
 }
 
 async function fetchRedditPublic(fullname) {
