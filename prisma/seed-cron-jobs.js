@@ -38,6 +38,14 @@ const cronJobs = [
     cronExpression: '0 11 * * *',
     enabled: false,
   },
+  {
+    name: 'daily-newsletter',
+    displayName: 'Daily Newsletter',
+    description: 'Multi-source daily digest combining NewsAPI + Reddit, sent to subscribers at 10:00 UTC',
+    script: 'jobs/generateNewsletter.js',
+    cronExpression: '0 10 * * *',
+    enabled: true,
+  },
 ];
 
 async function seed() {

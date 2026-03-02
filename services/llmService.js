@@ -10,6 +10,7 @@ const MODELS = {
   PREMIUM: 'gpt-5.2',           // For global briefings (executive summary)
   STANDARD: 'gpt-5.2-chat-latest', // For pro user reports (faster/cheaper)
   FALLBACK: 'gpt-4o-mini',      // Fallback if needed
+  BATCH: 'gpt-4o-mini',         // For batched newsletter digests (cost-efficient)
 };
 
 const EXECUTIVE_SUMMARY_PROMPT = `You are a senior editor at The Economist writing a briefing for intelligent, busy professionals. Your task is to synthesize multiple trending stories into a cohesive 2-3 paragraph executive summary.
@@ -280,9 +281,116 @@ async function selectHighlightComments(comments) {
   }));
 }
 
+const NEWSLETTER_DIGEST_PROMPT = `You are a senior editor producing a daily news digest. You receive a mix of news articles and trending Reddit posts. Your job is to write a cohesive, insightful newsletter.
+
+You must respond with valid JSON only, matching this exact structure:
+{
+  "title": "A compelling 5-8 word title for today's digest",
+  "executiveSummary": "2-3 paragraphs synthesizing the day's biggest themes. Write with authority. Connect stories thematically.",
+  "stories": [
+    {
+      "index": 0,
+      "summary": "2-3 sentences. Lead with the most important fact. Do NOT restate the headline.",
+      "category": "one of: TECH, SCIENCE, BUSINESS, WORLD, CULTURE, HEALTH",
+      "significance": "One sentence on why this matters"
+    }
+  ]
+}
+
+Writing rules:
+- Lead with the most interesting or important fact in each summary
+- Do NOT restate or paraphrase the article title
+- Use active voice and present tense
+- Be specific: names, numbers, concrete details
+- The executive summary should find narrative threads connecting the stories
+- Match story indices exactly to the input article order
+
+FORBIDDEN PHRASES: "In today's fast-paced world", "It's worth noting", "Time will tell", "It remains to be seen", "Stay tuned", "Moving forward", "The landscape is changing", any phrase starting with "In a world where"`;
+
+/**
+ * Generate a complete newsletter digest from a batch of articles in a single LLM call.
+ * Uses gpt-4o-mini for cost efficiency (~$0.15/1M input tokens).
+ *
+ * @param {Array} articles - Array of { title, description, source, url, content?, _origin, _category? }
+ * @returns {{ title, executiveSummary, stories: Array<{ index, summary, category, significance }> }}
+ */
+async function generateNewsletterDigest(articles) {
+  if (!process.env.OPENAI_API_KEY) {
+    console.log('OPENAI_API_KEY not set, using mock newsletter digest');
+    return {
+      title: 'Today\'s Digest',
+      executiveSummary: 'A roundup of the day\'s most notable stories.',
+      stories: articles.map((_, i) => ({
+        index: i,
+        summary: null,
+        category: 'WORLD',
+        significance: null,
+      })),
+    };
+  }
+
+  console.log(`Generating newsletter digest for ${articles.length} articles using ${MODELS.BATCH}`);
+
+  const articleList = articles.map((a, i) => {
+    let entry = `${i + 1}. [${a.source || a._origin}] ${a.title}`;
+    if (a.description) entry += `\n   Description: ${a.description}`;
+    if (a.content) entry += `\n   Article excerpt: ${a.content.slice(0, 1500)}`;
+    return entry;
+  }).join('\n\n');
+
+  const userPrompt = `Here are ${articles.length} articles for today's newsletter:\n\n${articleList}\n\nProduce the newsletter digest JSON. The "stories" array must have exactly ${articles.length} entries, one per article, in the same order.`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: MODELS.BATCH,
+      messages: [
+        { role: 'system', content: NEWSLETTER_DIGEST_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.7,
+      max_tokens: 3000,
+      response_format: { type: 'json_object' },
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) throw new Error('Empty response from OpenAI');
+
+    const parsed = JSON.parse(content);
+
+    // Post-process: remove headline repetition from summaries
+    if (Array.isArray(parsed.stories)) {
+      for (const story of parsed.stories) {
+        const originalArticle = articles[story.index];
+        if (originalArticle && story.summary) {
+          story.summary = removeHeadlineRepetition(story.summary, originalArticle.title);
+        }
+      }
+    }
+
+    return {
+      title: parsed.title || 'Daily Digest',
+      executiveSummary: parsed.executiveSummary || '',
+      stories: Array.isArray(parsed.stories) ? parsed.stories : [],
+    };
+  } catch (error) {
+    console.error('Newsletter digest generation error:', error.message);
+    return {
+      title: 'Daily Digest',
+      executiveSummary: 'Unable to generate digest at this time.',
+      stories: articles.map((_, i) => ({
+        index: i,
+        summary: null,
+        category: 'WORLD',
+        significance: null,
+      })),
+    };
+  }
+}
+
 module.exports = {
   generateStoryAnalysis,
   generateExecutiveSummary,
+  generateNewsletterDigest,
   selectHighlightComments,
   MODELS,
 };

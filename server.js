@@ -232,6 +232,7 @@ const dailyController = require('./controllers/dailyController.js');
 const discoverController = require('./controllers/discoverController.js');
 const rssService = require('./services/rssService.js');
 const briefingController = require('./controllers/briefingController.js');
+const newsletterController = require('./controllers/newsletterController.js');
 const userController = require('./controllers/userController.js');
 const adminController = require('./controllers/adminController.js');
 const forYouController = require('./controllers/forYouController');
@@ -342,6 +343,11 @@ app.get('/api/discover/user/:userId/reports/latest', discoverController.getLates
 app.get('/api/briefing/latest', briefingController.getLatestBriefing);
 app.get('/api/briefing/history', briefingController.getBriefingHistory);
 app.get('/api/briefing/:id', briefingController.getBriefingById);
+
+// Newsletter API
+app.get('/api/newsletter/latest', newsletterController.getLatestNewsletter);
+app.get('/api/newsletter/history', newsletterController.getNewsletterHistory);
+app.get('/api/newsletter/:id', newsletterController.getNewsletterById);
 
 // User API
 app.post('/api/user/sync', userController.syncUser);

@@ -6,6 +6,7 @@ const ENABLED = {
   'discover': true,
   'top-posts': false,  // Disabled — frontend fetches directly from Reddit RSS
   'daily-report': false,  // Disabled
+  'daily-newsletter': true,
 };
 
 const allApps = [
@@ -33,6 +34,7 @@ const allApps = [
       ADMIN_USERNAMES: process.env.ADMIN_USERNAMES,
       RESEND_API_KEY: process.env.RESEND_API_KEY,
       ADMIN_EMAIL: process.env.ADMIN_EMAIL,
+      NEWS_API_KEY: process.env.NEWS_API_KEY,
     },
   },
 
@@ -75,6 +77,23 @@ const allApps = [
       NODE_ENV: 'production',
       DATABASE_URL: process.env.DATABASE_URL,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    },
+  },
+
+  // Daily Newsletter - multi-source digest (NewsAPI + Reddit) at 10:00 UTC (5am ET)
+  {
+    name: 'daily-newsletter',
+    script: 'jobs/generateNewsletter.js',
+    cron_restart: '0 10 * * *',
+    autorestart: false,
+    watch: false,
+    env: {
+      NODE_ENV: 'production',
+      DATABASE_URL: process.env.DATABASE_URL,
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      NEWS_API_KEY: process.env.NEWS_API_KEY,
+      RESEND_API_KEY: process.env.RESEND_API_KEY,
+      PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL,
     },
   },
 ];

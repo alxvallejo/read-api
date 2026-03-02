@@ -766,6 +766,70 @@ model Quote {
   @@map("quotes")
 }
 
+// ============ Newsletter ============
+
+model NewsletterIssue {
+  id              String          @id @default(uuid())
+  issueDate       DateTime        @unique @map("issue_date") @db.Date
+  status          ReportStatus    @default(DRAFT)
+  title           String?
+  executiveSummary String?        @map("executive_summary")
+  sourceBreakdown Json?           @map("source_breakdown") // { reddit: 5, newsapi: 8 }
+  llmModel        String?         @map("llm_model")
+  llmCostCents    Int?            @map("llm_cost_cents")
+  sentAt          DateTime?       @map("sent_at")
+  recipientCount  Int?            @map("recipient_count")
+  generatedAt     DateTime        @map("generated_at")
+  publishedAt     DateTime?       @map("published_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  stories         NewsletterStory[]
+
+  @@index([issueDate])
+  @@index([status])
+  @@map("newsletter_issues")
+}
+
+model NewsletterStory {
+  id              String          @id @default(uuid())
+  issueId         String          @map("issue_id")
+  rank            Int
+
+  // Source tracking
+  origin          String          // "reddit" | "newsapi"
+  sourceName      String?         @map("source_name") // e.g. "Reuters", "r/technology"
+
+  // Content fields
+  title           String
+  url             String?
+  imageUrl        String?         @map("image_url")
+  author          String?
+  publishedAt     DateTime?       @map("published_at")
+
+  // Reddit-specific (null for newsapi articles)
+  subreddit       String?
+  redditPostId    String?         @map("reddit_post_id")
+  redditPermalink String?         @map("reddit_permalink")
+  score           Int?
+  numComments     Int?            @map("num_comments")
+
+  // LLM Outputs
+  summary         String?
+  category        String?         // TECH, SCIENCE, BUSINESS, WORLD, CULTURE, HEALTH
+  significance    String?
+
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  issue           NewsletterIssue @relation(fields: [issueId], references: [id])
+
+  @@unique([issueId, rank])
+  @@index([issueId, rank])
+  @@index([origin])
+  @@map("newsletter_stories")
+}
+
 // ============ Feedback ============
 
 model Feedback {
