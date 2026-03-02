@@ -163,8 +163,44 @@ function generateNewsletterHtml(report) {
   `;
 }
 
+/**
+ * Send an admin notification when someone submits feedback
+ */
+async function sendAdminNotification({ subject, body }) {
+  const adminEmail = process.env.ADMIN_EMAIL;
+  if (!process.env.RESEND_API_KEY || !adminEmail) {
+    console.log('RESEND_API_KEY or ADMIN_EMAIL not set, skipping admin notification');
+    return null;
+  }
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: adminEmail,
+      subject,
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          ${body}
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error('Admin notification error:', error);
+      return null;
+    }
+
+    console.log('Admin notification sent:', data?.id);
+    return data;
+  } catch (err) {
+    console.error('Failed to send admin notification:', err.message);
+    return null;
+  }
+}
+
 module.exports = {
   sendWelcomeEmail,
   sendDailyNewsletter,
   generateNewsletterHtml,
+  sendAdminNotification,
 };

@@ -31,6 +31,8 @@ const allApps = [
       PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL,
       ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
       ADMIN_USERNAMES: process.env.ADMIN_USERNAMES,
+      RESEND_API_KEY: process.env.RESEND_API_KEY,
+      ADMIN_EMAIL: process.env.ADMIN_EMAIL,
     },
   },
 
