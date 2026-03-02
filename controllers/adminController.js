@@ -35,6 +35,45 @@ function requireAdmin(req, res, next) {
 }
 
 /**
+ * GET /api/admin/subscriptions
+ * List newsletter signups with pagination
+ */
+async function listSubscriptions(req, res) {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
+    const offset = parseInt(req.query.offset, 10) || 0;
+    const search = (req.query.search || '').trim();
+
+    const where = search
+      ? {
+          OR: [
+            { email: { contains: search, mode: 'insensitive' } },
+            { source: { contains: search, mode: 'insensitive' } },
+          ],
+        }
+      : {};
+
+    const [subscriptions, total] = await Promise.all([
+      prisma.subscription.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: limit,
+      }),
+      prisma.subscription.count({ where }),
+    ]);
+
+    res.json({
+      subscriptions,
+      pagination: { total, limit, offset, hasMore: offset + subscriptions.length < total },
+    });
+  } catch (error) {
+    console.error('Error listing subscriptions:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+/**
  * GET /api/admin/stats
  * Dashboard statistics
  */
@@ -539,6 +578,7 @@ module.exports = {
   requireAdmin,
   getStats,
   listUsers,
+  listSubscriptions,
   setUserPro,
   setUserAdmin,
   listBriefings,

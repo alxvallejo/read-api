@@ -765,3 +765,16 @@ model Quote {
   @@index([storyId])
   @@map("quotes")
 }
+
+// ============ Feedback ============
+
+model Feedback {
+  id        String   @id @default(uuid())
+  message   String
+  page      String?  // URL path where feedback was submitted
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt(sort: Desc)])
+  @@map("feedback")
+}

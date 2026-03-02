@@ -379,9 +379,34 @@ app.delete('/api/stories/:id', storiesController.deleteStory);
 app.post('/api/stories/:id/publish', storiesController.publishStory);
 app.post('/api/stories/:id/unpublish', storiesController.unpublishStory);
 
+// Feedback API
+app.post('/api/feedback', async (req, res) => {
+  try {
+    const { message, page } = req.body;
+    if (!message || !message.trim()) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+    if (message.length > 2000) {
+      return res.status(400).json({ error: 'Message too long' });
+    }
+    await prisma.feedback.create({
+      data: {
+        message: message.trim(),
+        page: page || null,
+        userAgent: req.headers['user-agent'] || null,
+      },
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('feedback error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 // Admin API (protected)
 app.get('/api/admin/stats', adminController.requireAdmin, adminController.getStats);
 app.get('/api/admin/users', adminController.requireAdmin, adminController.listUsers);
+app.get('/api/admin/subscriptions', adminController.requireAdmin, adminController.listSubscriptions);
 app.post('/api/admin/users/:redditUsername/pro', adminController.requireAdmin, adminController.setUserPro);
 app.post('/api/admin/users/:redditUsername/admin', adminController.requireAdmin, adminController.setUserAdmin);
 app.get('/api/admin/briefings', adminController.requireAdmin, adminController.listBriefings);
