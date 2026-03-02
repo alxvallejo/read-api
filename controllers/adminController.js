@@ -1,6 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const { Pool } = require('pg');
 const { PrismaPg } = require('@prisma/adapter-pg');
+const emailService = require('../services/emailService');
 
 const connectionString = process.env.DATABASE_URL;
 const pool = new Pool({ connectionString });
@@ -574,6 +575,43 @@ async function deleteRedditUsageLogs(req, res) {
   }
 }
 
+/**
+ * POST /api/admin/test-email
+ * Send a test email to verify email configuration
+ */
+async function sendTestEmail(req, res) {
+  try {
+    const adminEmail = process.env.ADMIN_EMAIL;
+    if (!adminEmail) {
+      return res.status(400).json({ error: 'ADMIN_EMAIL not configured' });
+    }
+
+    const result = await emailService.sendAdminNotification({
+      subject: 'Test Email from Reddzit Admin',
+      body: `
+        <h2 style="color: #ea580c;">✓ Email Configuration Test</h2>
+        <p style="color: #374151; font-size: 16px; line-height: 1.6;">
+          This is a test email sent from your Reddzit admin dashboard.
+        </p>
+        <p style="color: #374151; font-size: 16px; line-height: 1.6; background: #f8fafc; padding: 16px; border-radius: 8px;">
+          If you're reading this, your email notification system is working correctly!
+        </p>
+        <p style="color: #6b7280; font-size: 14px;">Sent at ${new Date().toISOString()}</p>
+        <p style="color: #9ca3af; font-size: 12px;">From: ${process.env.FROM_EMAIL || 'Reddzit Daily <daily@reddzit.com>'}</p>
+      `,
+    });
+
+    if (result) {
+      res.json({ success: true, message: `Test email sent to ${adminEmail}`, emailId: result.id });
+    } else {
+      res.status(500).json({ error: 'Failed to send test email. Check server logs.' });
+    }
+  } catch (error) {
+    console.error('Error sending test email:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+}
+
 module.exports = {
   requireAdmin,
   getStats,
@@ -593,4 +631,6 @@ module.exports = {
   getRedditUsage,
   getRedditUsageLogs,
   deleteRedditUsageLogs,
+  // Email Testing
+  sendTestEmail,
 };

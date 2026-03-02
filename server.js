@@ -451,6 +451,9 @@ app.get('/api/admin/cache-stats', adminController.requireAdmin, (req, res) => {
 app.get('/api/admin/reddit-usage/logs', adminController.requireAdmin, adminController.getRedditUsageLogs);
 app.delete('/api/admin/reddit-usage/logs', adminController.requireAdmin, adminController.deleteRedditUsageLogs);
 
+// Email Testing
+app.post('/api/admin/test-email', adminController.requireAdmin, adminController.sendTestEmail);
+
 // Dynamic share preview route (inject OG/Twitter tags)
 app.get('/p/:fullname', async (req, res) => {
   try {
