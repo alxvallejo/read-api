@@ -1,5 +1,12 @@
 var read = require('node-readability');
 const fetch = require('node-fetch');
+const { LRUCache } = require('lru-cache');
+
+// Cache extracted article content for 24 hours
+const articleCache = new LRUCache({
+  max: 200,
+  ttl: 1000 * 60 * 60 * 24, // 24 hours
+});
 
 function parseRedditCommentId(inputUrl) {
   try {
@@ -32,6 +39,12 @@ module.exports = {
   readUrl: (url, token) => {
     return new Promise((resolve, reject) => {
       let httpsUrl = url.replace('http://', 'https://');
+
+      // Return cached result if available
+      const cached = articleCache.get(httpsUrl);
+      if (cached !== undefined) {
+        return resolve(cached);
+      }
       const commentId = parseRedditCommentId(httpsUrl);
       if (commentId) {
         // Handle Reddit comment permalinks specially
@@ -52,7 +65,7 @@ module.exports = {
             const child = data && data.data && Array.isArray(data.data.children) && data.data.children[0];
             const thing = child && child.data;
             if (thing) {
-              const result = {
+            const result = {
                 type: 'comment',
                 id: thing.name,
                 author: thing.author,
@@ -64,6 +77,7 @@ module.exports = {
                 title: thing.link_title || `Comment by u/${thing.author}`,
                 content: thing.body_html || null
               };
+              articleCache.set(httpsUrl, result);
               return resolve(result);
             }
             // If we didn't get a thing, fall through to readability below
@@ -91,7 +105,9 @@ module.exports = {
                   resolve(null);
                 } else {
                   article.close();
-                  resolve({ type: 'article', content, title });
+                  const result = { type: 'article', content, title };
+                  articleCache.set(httpsUrl, result);
+                  resolve(result);
                 }
               }
             );
@@ -115,18 +131,16 @@ module.exports = {
             if (!article) {
               reject(null);
             }
-            // debugger;
-            //console.log(meta)
-            // console.log('article: ', article);
             let content = article ? article.content : null;
-
             let title = article ? article.title : null;
 
             if (!article) {
               resolve(null);
             } else {
               article.close();
-              resolve({ type: 'article', content, title });
+              const result = { type: 'article', content, title };
+              articleCache.set(httpsUrl, result);
+              resolve(result);
             }
           }
         );
