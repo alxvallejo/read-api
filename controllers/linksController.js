@@ -68,6 +68,35 @@ function parseDomain(url) {
   }
 }
 
+// Detect Cloudflare challenges, CAPTCHAs, and other bot-blocking pages
+const JUNK_PATTERNS = [
+  /attention required/i,
+  /cloudflare/i,
+  /checking your browser/i,
+  /enable javascript and cookies/i,
+  /ray id/i,
+  /just a moment/i,
+  /access denied/i,
+  /please verify you are a human/i,
+  /captcha/i,
+  /blocked/i,
+  /security check/i,
+];
+
+function isJunkContent(title, content) {
+  const text = `${title || ''} ${content || ''}`;
+  // If content is very short and matches a pattern, it's junk
+  const stripped = (content || '').replace(/<[^>]*>/g, '').trim();
+  if (stripped.length < 200) {
+    return JUNK_PATTERNS.some(p => p.test(text));
+  }
+  // Even long content: if the title itself is a bot-block phrase, reject
+  if (title && JUNK_PATTERNS.some(p => p.test(title))) {
+    return true;
+  }
+  return false;
+}
+
 function mapLink(link) {
   return {
     id: link.id,
@@ -119,9 +148,11 @@ async function saveLink(req, res) {
 
     try {
       const extracted = await read.readUrl(url, token);
-      if (extracted) {
+      if (extracted && !isJunkContent(extracted.title, extracted.content)) {
         title = extracted.title || null;
         extractedContent = extracted.content || null;
+      } else if (extracted) {
+        console.warn('Junk content detected for', url, '— title:', extracted.title);
       }
     } catch (err) {
       console.warn('Link content extraction failed for', url, err?.message);
@@ -235,16 +266,24 @@ async function getLinkContent(req, res) {
       return res.status(404).json({ error: 'Link not found' });
     }
 
-    // If we have cached content, return it
+    // If we have cached content, check it's not junk before returning
     if (link.extractedContent) {
-      return res.json({
-        link: mapLink(link),
-        content: {
-          type: 'article',
-          title: link.title,
-          content: link.extractedContent
-        }
-      });
+      if (isJunkContent(link.title, link.extractedContent)) {
+        // Clear the junk so we don't keep serving it
+        await prisma.savedLink.update({
+          where: { id },
+          data: { extractedContent: null, title: null }
+        });
+      } else {
+        return res.json({
+          link: mapLink(link),
+          content: {
+            type: 'article',
+            title: link.title,
+            content: link.extractedContent
+          }
+        });
+      }
     }
 
     // Try to re-extract
