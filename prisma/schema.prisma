@@ -436,6 +436,7 @@ model User {
   forYouReports     ForYouReport[]
   quotes            Quote[]
   stories           Story[]
+  savedLinks        SavedLink[]
 
   @@index([redditUsername])
   @@index([stripeCustomerId])
@@ -764,6 +765,27 @@ model Quote {
   @@index([userId, createdAt(sort: Desc)])
   @@index([storyId])
   @@map("quotes")
+}
+
+// ============ Saved Links Feature ============
+
+model SavedLink {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  url         String
+  title       String
+  description String?
+  favicon     String?
+  tags        Json     @default("[]")
+  note        String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, url])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("saved_links")
 }
 
 // ============ Newsletter ============
