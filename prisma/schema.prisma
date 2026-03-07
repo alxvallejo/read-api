@@ -770,18 +770,17 @@ model Quote {
 // ============ Saved Links Feature ============
 
 model SavedLink {
-  id          String   @id @default(uuid())
-  userId      String   @map("user_id")
-  url         String
-  title       String
-  description String?
-  favicon     String?
-  tags        Json     @default("[]")
-  note        String?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id                String    @id @default(uuid())
+  userId            String    @map("user_id")
+  url               String
+  title             String?
+  imageUrl          String?   @map("image_url")
+  domain            String?
+  extractedContent  String?   @map("extracted_content")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  user        User     @relation(fields: [userId], references: [id])
+  user              User      @relation(fields: [userId], references: [id])
 
   @@unique([userId, url])
   @@index([userId, createdAt(sort: Desc)])

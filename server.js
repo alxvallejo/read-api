@@ -379,9 +379,9 @@ app.delete('/api/quotes/:id', quotesController.deleteQuote);
 
 // Saved Links routes
 app.get('/api/links', linksController.listLinks);
-app.post('/api/links', linksController.createLink);
-app.put('/api/links/:id', linksController.updateLink);
+app.post('/api/links', linksController.saveLink);
 app.delete('/api/links/:id', linksController.deleteLink);
+app.get('/api/links/:id/content', linksController.getLinkContent);
 
 // Story routes
 app.get('/api/stories', storiesController.listStories);
