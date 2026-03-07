@@ -204,7 +204,7 @@ async function updateQuote(req, res) {
       return res.status(404).json({ error: 'Quote not found' });
     }
 
-    const { note, tags, storyId } = req.body;
+    const { text, note, tags, storyId } = req.body;
 
     if (storyId !== undefined && storyId !== null) {
       const story = await prisma.story.findFirst({
@@ -215,10 +215,10 @@ async function updateQuote(req, res) {
       }
     }
 
-    // Only allow updating note, tags, and storyId
     const quote = await prisma.quote.update({
       where: { id },
       data: {
+        text: text !== undefined ? text : existingQuote.text,
         note: note !== undefined ? note : existingQuote.note,
         tags: tags !== undefined ? tags : existingQuote.tags,
         storyId: storyId !== undefined ? storyId : existingQuote.storyId
@@ -281,9 +281,40 @@ async function deleteQuote(req, res) {
   }
 }
 
+// GET /api/quotes/:id/public (no auth required)
+async function getPublicQuote(req, res) {
+  try {
+    const { id } = req.params;
+
+    const quote = await prisma.quote.findUnique({
+      where: { id }
+    });
+
+    if (!quote) {
+      return res.status(404).json({ error: 'Quote not found' });
+    }
+
+    return res.json({
+      quote: {
+        id: quote.id,
+        text: quote.text,
+        sourceUrl: quote.sourceUrl,
+        subreddit: quote.subreddit,
+        postTitle: quote.postTitle,
+        author: quote.author,
+        createdAt: quote.createdAt.toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('getPublicQuote error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 module.exports = {
   listQuotes,
   createQuote,
   updateQuote,
-  deleteQuote
+  deleteQuote,
+  getPublicQuote
 };

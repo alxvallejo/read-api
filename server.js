@@ -376,6 +376,7 @@ app.get('/api/quotes', quotesController.listQuotes);
 app.post('/api/quotes', quotesController.createQuote);
 app.put('/api/quotes/:id', quotesController.updateQuote);
 app.delete('/api/quotes/:id', quotesController.deleteQuote);
+app.get('/api/quotes/:id/public', quotesController.getPublicQuote);
 
 // Saved Links routes
 app.get('/api/links', linksController.listLinks);
@@ -508,6 +509,48 @@ app.get('/p/:fullname', async (req, res) => {
     res.send(injected);
   } catch (err) {
     console.error('SSR route error', err);
+    res.status(500).send('Server error');
+  }
+});
+
+// Dynamic share preview route for quotes
+app.get('/q/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const indexHtml = await readIndexHtml();
+    if (!indexHtml) {
+      return res.status(500).send('SSR not configured');
+    }
+
+    let quote = null;
+    try {
+      quote = await prisma.quote.findUnique({ where: { id } });
+    } catch (e) {
+      // continue with defaults
+    }
+
+    const quoteText = quote ? String(quote.text).slice(0, 200) : '';
+    const baseTitle = quote
+      ? (quote.postTitle || 'A quote on Reddzit')
+      : 'Reddzit Quote';
+    const description = quoteText || 'A saved quote on Reddzit.';
+    const ogUrl = (PUBLIC_BASE_URL || '') + req.originalUrl;
+    const ogImage = PUBLIC_BASE_URL ? PUBLIC_BASE_URL + '/reddzit-hero.png' : '/reddzit-hero.png';
+
+    const injected = injectMeta(indexHtml, {
+      title: `\u201c${baseTitle}\u201d \u2014 Reddzit`,
+      ogTitle: baseTitle,
+      ogDescription: description,
+      ogImage,
+      ogUrl,
+      canonical: ogUrl,
+    });
+
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(injected);
+  } catch (err) {
+    console.error('SSR quote route error', err);
     res.status(500).send('Server error');
   }
 });
