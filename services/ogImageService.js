@@ -26,7 +26,7 @@ async function loadFonts() {
 }
 
 // Truncate text to fit roughly within the card
-function truncateText(text, maxChars = 280) {
+function truncateText(text, maxChars = 220) {
   if (text.length <= maxChars) return text;
   return text.substring(0, maxChars).trimEnd() + '…';
 }
@@ -65,7 +65,7 @@ async function generateQuoteImage(quote) {
             type: 'div',
             props: {
               style: {
-                fontSize: '72px',
+                fontSize: '96px',
                 color: '#f97316',
                 opacity: 0.6,
                 lineHeight: 1,
@@ -79,7 +79,7 @@ async function generateQuoteImage(quote) {
             type: 'div',
             props: {
               style: {
-                fontSize: displayText.length > 200 ? '24px' : displayText.length > 100 ? '28px' : '36px',
+                fontSize: displayText.length > 200 ? '32px' : displayText.length > 100 ? '38px' : '48px',
                 color: '#ffffff',
                 lineHeight: 1.5,
                 fontWeight: 400,
@@ -115,7 +115,7 @@ async function generateQuoteImage(quote) {
                         type: 'div',
                         props: {
                           style: {
-                            fontSize: '16px',
+                    fontSize: '20px',
                             color: '#f97316',
                             fontWeight: 500,
                             maxWidth: '700px',
@@ -132,7 +132,7 @@ async function generateQuoteImage(quote) {
                         type: 'div',
                         props: {
                           style: {
-                            fontSize: '14px',
+                            fontSize: '18px',
                             color: 'rgba(255,255,255,0.5)',
                           },
                           children: attribution,
@@ -146,7 +146,7 @@ async function generateQuoteImage(quote) {
                   type: 'div',
                   props: {
                     style: {
-                      fontSize: '18px',
+                      fontSize: '22px',
                       fontWeight: 700,
                       color: '#f97316',
                     },
