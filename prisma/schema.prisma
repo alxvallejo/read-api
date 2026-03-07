@@ -753,11 +753,12 @@ model Quote {
   postTitle   String   @map("post_title")
   author      String
   storyId     String?  @map("story_id")
-  isExternal  Boolean  @default(false) @map("is_external")
-  pageUrl     String?  @map("page_url")
-  pageTitle   String?  @map("page_title")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  isExternal  Boolean   @default(false) @map("is_external")
+  pageUrl     String?   @map("page_url")
+  pageTitle   String?   @map("page_title")
+  sourceDate  DateTime? @map("source_date")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   user        User     @relation(fields: [userId], references: [id])
   story       Story?   @relation(fields: [storyId], references: [id])

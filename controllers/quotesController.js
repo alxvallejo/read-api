@@ -96,6 +96,7 @@ async function listQuotes(req, res) {
         note: q.note,
         tags: q.tags,
         storyId: q.storyId,
+        sourceDate: q.sourceDate ? q.sourceDate.toISOString() : null,
         createdAt: q.createdAt.toISOString(),
         updatedAt: q.updatedAt.toISOString()
       })),
@@ -117,7 +118,7 @@ async function createQuote(req, res) {
 
     const { user } = await getUserFromToken(token);
 
-    const { postId, text, sourceUrl, subreddit, postTitle, author, note, tags, storyId, isExternal, pageUrl, pageTitle } = req.body;
+    const { postId, text, sourceUrl, subreddit, postTitle, author, note, tags, storyId, isExternal, pageUrl, pageTitle, sourceDate } = req.body;
 
     // Validate required fields
     if (!text || !sourceUrl) {
@@ -155,7 +156,8 @@ async function createQuote(req, res) {
         storyId: storyId || null,
         isExternal: isExternal || false,
         pageUrl: pageUrl || null,
-        pageTitle: pageTitle || null
+        pageTitle: pageTitle || null,
+        sourceDate: sourceDate ? new Date(sourceDate) : null
       }
     });
 
@@ -171,6 +173,7 @@ async function createQuote(req, res) {
         note: quote.note,
         tags: quote.tags,
         storyId: quote.storyId,
+        sourceDate: quote.sourceDate ? quote.sourceDate.toISOString() : null,
         createdAt: quote.createdAt.toISOString(),
         updatedAt: quote.updatedAt.toISOString()
       }
@@ -237,6 +240,7 @@ async function updateQuote(req, res) {
         note: quote.note,
         tags: quote.tags,
         storyId: quote.storyId,
+        sourceDate: quote.sourceDate ? quote.sourceDate.toISOString() : null,
         createdAt: quote.createdAt.toISOString(),
         updatedAt: quote.updatedAt.toISOString()
       }
@@ -302,6 +306,7 @@ async function getPublicQuote(req, res) {
         subreddit: quote.subreddit,
         postTitle: quote.postTitle,
         author: quote.author,
+        sourceDate: quote.sourceDate ? quote.sourceDate.toISOString() : null,
         createdAt: quote.createdAt.toISOString()
       }
     });
