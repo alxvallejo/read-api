@@ -378,6 +378,25 @@ app.put('/api/quotes/:id', quotesController.updateQuote);
 app.delete('/api/quotes/:id', quotesController.deleteQuote);
 app.get('/api/quotes/:id/public', quotesController.getPublicQuote);
 
+// OG image generation for quote sharing
+const ogImageService = require('./services/ogImageService');
+app.get('/api/quotes/:id/og.png', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const quote = await prisma.quote.findUnique({ where: { id } });
+    if (!quote) {
+      return res.status(404).send('Not found');
+    }
+    const png = await ogImageService.generateQuoteImage(quote);
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(png);
+  } catch (err) {
+    console.error('OG image error:', err);
+    res.status(500).send('Image generation failed');
+  }
+});
+
 // Saved Links routes
 app.get('/api/links', linksController.listLinks);
 app.post('/api/links', linksController.saveLink);
@@ -535,7 +554,9 @@ app.get('/q/:id', async (req, res) => {
       : 'Reddzit Quote';
     const description = quoteText || 'A saved quote on Reddzit.';
     const ogUrl = (PUBLIC_BASE_URL || '') + req.originalUrl;
-    const ogImage = PUBLIC_BASE_URL ? PUBLIC_BASE_URL + '/reddzit-hero.png' : '/reddzit-hero.png';
+    const ogImage = quote
+      ? (PUBLIC_BASE_URL || '') + `/api/quotes/${id}/og.png`
+      : (PUBLIC_BASE_URL ? PUBLIC_BASE_URL + '/reddzit-hero.png' : '/reddzit-hero.png');
 
     const injected = injectMeta(indexHtml, {
       title: `\u201c${baseTitle}\u201d \u2014 Reddzit`,
