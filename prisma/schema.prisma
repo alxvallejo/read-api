@@ -757,6 +757,8 @@ model Quote {
   pageUrl     String?   @map("page_url")
   pageTitle   String?   @map("page_title")
   sourceDate  DateTime? @map("source_date")
+  displayFont String?   @map("display_font")
+  displayBg   String?   @map("display_bg")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 

@@ -31,6 +31,15 @@ function truncateText(text, maxChars = 220) {
   return text.substring(0, maxChars).trimEnd() + '…';
 }
 
+// Lighten a hex color by a percentage (0-1) for gradient variation
+function lightenHex(hex, amount = 0.15) {
+  const num = parseInt(hex.replace('#', ''), 16);
+  const r = Math.min(255, ((num >> 16) & 0xff) + Math.round(255 * amount));
+  const g = Math.min(255, ((num >> 8) & 0xff) + Math.round(255 * amount));
+  const b = Math.min(255, (num & 0xff) + Math.round(255 * amount));
+  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+}
+
 async function generateQuoteImage(quote) {
   // Check cache
   const cacheKey = `${quote.id}-${quote.updatedAt || quote.createdAt}`;
@@ -38,6 +47,9 @@ async function generateQuoteImage(quote) {
   if (cached) return cached;
 
   await loadFonts();
+
+  const baseBg = quote.displayBg || '#1a1625';
+  const midBg = lightenHex(baseBg, 0.08);
 
   const displayText = truncateText(quote.text);
   const attribution = [
@@ -56,7 +68,7 @@ async function generateQuoteImage(quote) {
           flexDirection: 'column',
           justifyContent: 'center',
           padding: '60px 70px',
-          background: 'linear-gradient(135deg, #1a1625 0%, #2d2640 50%, #1a1625 100%)',
+          background: `linear-gradient(135deg, ${baseBg} 0%, ${midBg} 50%, ${baseBg} 100%)`,
           fontFamily: 'Inter',
         },
         children: [

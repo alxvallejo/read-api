@@ -97,6 +97,8 @@ async function listQuotes(req, res) {
         tags: q.tags,
         storyId: q.storyId,
         sourceDate: q.sourceDate ? q.sourceDate.toISOString() : null,
+        displayFont: q.displayFont || null,
+        displayBg: q.displayBg || null,
         createdAt: q.createdAt.toISOString(),
         updatedAt: q.updatedAt.toISOString()
       })),
@@ -174,6 +176,8 @@ async function createQuote(req, res) {
         tags: quote.tags,
         storyId: quote.storyId,
         sourceDate: quote.sourceDate ? quote.sourceDate.toISOString() : null,
+        displayFont: quote.displayFont || null,
+        displayBg: quote.displayBg || null,
         createdAt: quote.createdAt.toISOString(),
         updatedAt: quote.updatedAt.toISOString()
       }
@@ -207,7 +211,7 @@ async function updateQuote(req, res) {
       return res.status(404).json({ error: 'Quote not found' });
     }
 
-    const { text, note, tags, storyId } = req.body;
+    const { text, note, tags, storyId, displayFont, displayBg } = req.body;
 
     if (storyId !== undefined && storyId !== null) {
       const story = await prisma.story.findFirst({
@@ -224,7 +228,9 @@ async function updateQuote(req, res) {
         text: text !== undefined ? text : existingQuote.text,
         note: note !== undefined ? note : existingQuote.note,
         tags: tags !== undefined ? tags : existingQuote.tags,
-        storyId: storyId !== undefined ? storyId : existingQuote.storyId
+        storyId: storyId !== undefined ? storyId : existingQuote.storyId,
+        displayFont: displayFont !== undefined ? displayFont : existingQuote.displayFont,
+        displayBg: displayBg !== undefined ? displayBg : existingQuote.displayBg
       }
     });
 
@@ -241,6 +247,8 @@ async function updateQuote(req, res) {
         tags: quote.tags,
         storyId: quote.storyId,
         sourceDate: quote.sourceDate ? quote.sourceDate.toISOString() : null,
+        displayFont: quote.displayFont || null,
+        displayBg: quote.displayBg || null,
         createdAt: quote.createdAt.toISOString(),
         updatedAt: quote.updatedAt.toISOString()
       }
@@ -307,6 +315,8 @@ async function getPublicQuote(req, res) {
         postTitle: quote.postTitle,
         author: quote.author,
         sourceDate: quote.sourceDate ? quote.sourceDate.toISOString() : null,
+        displayFont: quote.displayFont || null,
+        displayBg: quote.displayBg || null,
         createdAt: quote.createdAt.toISOString()
       }
     });
