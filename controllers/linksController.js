@@ -119,7 +119,7 @@ async function saveLink(req, res) {
     }
 
     const { user } = await getUserFromToken(token);
-    const { url } = req.body;
+    const { url, title: clientTitle, imageUrl: clientImageUrl, description: clientDescription } = req.body;
 
     if (!url || typeof url !== 'string') {
       return res.status(400).json({ error: 'url is required' });
@@ -142,21 +142,25 @@ async function saveLink(req, res) {
       return res.status(409).json({ error: 'Link already saved', link: mapLink(existing) });
     }
 
-    // Extract content via readability
-    let title = null;
-    let extractedContent = null;
+    let title = clientTitle || null;
+    let extractedContent = clientDescription || null;
+    let imageUrl = clientImageUrl || null;
 
-    try {
-      const extracted = await read.readUrl(url, token);
-      if (extracted && !isJunkContent(extracted.title, extracted.content)) {
-        title = extracted.title || null;
-        extractedContent = extracted.content || null;
-      } else if (extracted) {
-        console.warn('Junk content detected for', url, '— title:', extracted.title);
+    // Skip server-side extraction when client provided an image URL
+    // (likely a JS-rendered page like Instagram that would fail anyway)
+    if (!clientImageUrl) {
+      try {
+        const extracted = await read.readUrl(url, token);
+        if (extracted && !isJunkContent(extracted.title, extracted.content)) {
+          title = extracted.title || title;
+          extractedContent = extracted.content || extractedContent;
+        } else if (extracted) {
+          console.warn('Junk content detected for', url, '— title:', extracted.title);
+        }
+      } catch (err) {
+        console.warn('Link content extraction failed for', url, err?.message);
+        // Save anyway — user can still open the original link
       }
-    } catch (err) {
-      console.warn('Link content extraction failed for', url, err?.message);
-      // Save anyway — user can still open the original link
     }
 
     const link = await prisma.savedLink.create({
@@ -164,6 +168,7 @@ async function saveLink(req, res) {
         userId: user.id,
         url,
         title,
+        imageUrl,
         domain,
         extractedContent,
       }
