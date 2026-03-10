@@ -70,8 +70,14 @@ function slugify(text) {
     .substring(0, 80);
 }
 
-function serializeStory(s) {
-  return {
+function extractFirstImage(html) {
+  if (!html || typeof html !== 'string') return null;
+  const match = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+  return match ? match[1] : null;
+}
+
+function serializeStory(s, opts = {}) {
+  const result = {
     id: s.id,
     userId: s.userId,
     title: s.title,
@@ -84,6 +90,13 @@ function serializeStory(s) {
     updatedAt: s.updatedAt.toISOString(),
     _count: s._count || undefined
   };
+  if (opts.includeAuthor && s.user) {
+    result.author = s.user.redditUsername;
+  }
+  if (opts.includeCoverImage) {
+    result.coverImage = extractFirstImage(s.content?.text) || null;
+  }
+  return result;
 }
 
 // GET /api/stories
@@ -376,6 +389,32 @@ async function unpublishStory(req, res) {
   }
 }
 
+// GET /api/stories/:id/public (no auth)
+async function getPublicStory(req, res) {
+  try {
+    const { id } = req.params;
+
+    const story = await prisma.story.findFirst({
+      where: { id, status: 'PUBLISHED' },
+      include: {
+        user: { select: { redditUsername: true } },
+        _count: { select: { quotes: true } }
+      }
+    });
+
+    if (!story) {
+      return res.status(404).json({ error: 'Story not found' });
+    }
+
+    return res.json({
+      story: serializeStory(story, { includeAuthor: true, includeCoverImage: true })
+    });
+  } catch (error) {
+    console.error('getPublicStory error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 module.exports = {
   listStories,
   createStory,
@@ -383,5 +422,7 @@ module.exports = {
   updateStory,
   deleteStory,
   publishStory,
-  unpublishStory
+  unpublishStory,
+  getPublicStory,
+  extractFirstImage
 };

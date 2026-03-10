@@ -411,6 +411,7 @@ app.put('/api/stories/:id', storiesController.updateStory);
 app.delete('/api/stories/:id', storiesController.deleteStory);
 app.post('/api/stories/:id/publish', storiesController.publishStory);
 app.post('/api/stories/:id/unpublish', storiesController.unpublishStory);
+app.get('/api/stories/:id/public', storiesController.getPublicStory);
 
 // Feedback API
 const emailService = require('./services/emailService.js');
@@ -572,6 +573,54 @@ app.get('/q/:id', async (req, res) => {
     res.send(injected);
   } catch (err) {
     console.error('SSR quote route error', err);
+    res.status(500).send('Server error');
+  }
+});
+
+// Published story share preview route
+app.get('/s/:id/:slug?', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const indexHtml = await readIndexHtml();
+    if (!indexHtml) {
+      return res.status(500).send('SSR not configured');
+    }
+
+    let story = null;
+    try {
+      story = await prisma.story.findFirst({
+        where: { id, status: 'PUBLISHED' },
+        include: { user: { select: { redditUsername: true } } }
+      });
+    } catch (e) {
+      // continue with defaults
+    }
+
+    const baseTitle = story ? story.title : 'Story on Reddzit';
+    const description = story && story.description
+      ? String(story.description).slice(0, 200)
+      : 'A story on Reddzit.';
+    const coverImage = story
+      ? storiesController.extractFirstImage(story.content?.text)
+      : null;
+    const ogImage = coverImage
+      || (PUBLIC_BASE_URL ? PUBLIC_BASE_URL + '/reddzit-hero.png' : '/reddzit-hero.png');
+    const ogUrl = (PUBLIC_BASE_URL || '') + req.originalUrl;
+
+    const injected = injectMeta(indexHtml, {
+      title: `${baseTitle} — Reddzit`,
+      ogTitle: baseTitle,
+      ogDescription: description,
+      ogImage,
+      ogUrl,
+      canonical: ogUrl,
+    });
+
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(injected);
+  } catch (err) {
+    console.error('SSR story route error', err);
     res.status(500).send('Server error');
   }
 });
