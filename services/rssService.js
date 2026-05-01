@@ -20,13 +20,9 @@ let cache = {
 };
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-// Separate cache for JSON endpoint
-let jsonCache = {
-  data: null,
-  timestamp: 0,
-  key: null
-};
+// Per-key cache for JSON-endpoint aggregations
 const JSON_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+const jsonCache = new Map(); // key -> { data, timestamp }
 
 const { LRUCache } = require('lru-cache');
 const redditService = require('./redditService');
@@ -35,6 +31,15 @@ const nodeFetch = require('node-fetch');
 // Cache top comments per post fullname. Top comments on hero posts don't
 // change much in an hour, and the same post is likely visible to many users.
 const topCommentCache = new LRUCache({
+  max: 2000,
+  ttl: 1000 * 60 * 60, // 1 hour
+});
+
+// Cache by_id enrichment results per fullname. The listing endpoints
+// strip preview data on some subreddits (notably r/news), so we batch-fetch
+// the missing posts via /by_id where preview data IS returned. Cached
+// aggressively since post metadata is effectively immutable.
+const enrichmentCache = new LRUCache({
   max: 2000,
   ttl: 1000 * 60 * 60, // 1 hour
 });
@@ -117,9 +122,10 @@ async function getTopPostsFromJSON(subreddit = 'all', limit = 25, sort = 'hot') 
   const cacheKey = `${subreddit}-${limit}-${sort}`;
 
   // Return cached data if fresh
-  if (jsonCache.data && jsonCache.key === cacheKey && (now - jsonCache.timestamp) < JSON_CACHE_DURATION) {
+  const cached = jsonCache.get(cacheKey);
+  if (cached && (now - cached.timestamp) < JSON_CACHE_DURATION) {
     console.log('Returning cached JSON data');
-    return jsonCache.data;
+    return cached.data;
   }
 
   try {
@@ -143,18 +149,15 @@ async function getTopPostsFromJSON(subreddit = 'all', limit = 25, sort = 'hot') 
       .filter(post => !post.over_18); // Filter NSFW
 
     // Update cache
-    jsonCache = {
-      data: posts,
-      key: cacheKey,
-      timestamp: now
-    };
+    jsonCache.set(cacheKey, { data: posts, timestamp: now });
 
     return posts;
   } catch (error) {
     console.error('JSON fetch error:', error.message);
     // Return stale cache on error if available
-    if (jsonCache.data && jsonCache.key === cacheKey) {
-      return jsonCache.data;
+    const stale = jsonCache.get(cacheKey);
+    if (stale) {
+      return stale.data;
     }
     throw error;
   }
@@ -226,9 +229,227 @@ async function getTopComment(fullname, { prisma, accessToken } = {}) {
   return result;
 }
 
+const { pickPreviewImageOrNull } = require('./redditMediaService');
+const { getAppOnlyAccessToken } = require('../controllers/redditProxyController');
+
+const FEED_URL_BASE = 'https://www.reddit.com';
+
+/**
+ * Build the list of feed URLs to aggregate based on the requested view.
+ *
+ * - subreddit === undefined => the "/top" view: r/all + r/popular mix (matches the legacy frontend behavior)
+ * - subreddit === any name  => three sorts of that single sub
+ */
+function buildFeedUrls(subreddit) {
+  if (!subreddit) {
+    return [
+      `${FEED_URL_BASE}/r/all/hot.json?limit=50`,
+      `${FEED_URL_BASE}/r/all/rising.json?limit=25`,
+      `${FEED_URL_BASE}/r/all/top.json?t=day&limit=25`,
+      `${FEED_URL_BASE}/r/popular/hot.json?limit=25`,
+      `${FEED_URL_BASE}/r/popular/top.json?t=day&limit=25`,
+    ];
+  }
+  return [
+    `${FEED_URL_BASE}/r/${subreddit}/hot.json?limit=50`,
+    `${FEED_URL_BASE}/r/${subreddit}/rising.json?limit=25`,
+    `${FEED_URL_BASE}/r/${subreddit}/top.json?t=day&limit=25`,
+  ];
+}
+
+const TOP_COMMENT_TARGET_COUNT = 7;
+
+/**
+ * Aggregate multiple Reddit JSON sorts into a deduped feed of posts.
+ * Extracts image URLs and (optionally) attaches top comments to the first 7 posts.
+ *
+ * Returns: { posts: FeedPost[], generatedAt: string, cached: boolean }
+ */
+async function getAggregatedFeed({ subreddit, withTopComments = true, prisma = null } = {}) {
+  const normalizedSub = subreddit ? subreddit.trim().toLowerCase() : null;
+  const cacheKey = `agg:${normalizedSub || 'top'}:${withTopComments ? 'tc1' : 'tc0'}`;
+
+  const now = Date.now();
+  const cached = jsonCache.get(cacheKey);
+  if (cached && (now - cached.timestamp) < JSON_CACHE_DURATION) {
+    return { ...cached.data, cached: true };
+  }
+
+  const urls = buildFeedUrls(normalizedSub);
+  const userAgent = process.env.USER_AGENT || 'Reddzit/1.0';
+
+  const parsedResults = await Promise.allSettled(
+    urls.map(async (url) => {
+      const response = await nodeFetch(url, { headers: { 'User-Agent': userAgent } });
+      if (!response.ok) return [];
+      const json = await response.json();
+      return (json && json.data && json.data.children) || [];
+    })
+  );
+
+  const allChildren = [];
+  for (const result of parsedResults) {
+    if (result.status === 'fulfilled') {
+      allChildren.push(...result.value);
+    } else {
+      console.warn('getAggregatedFeed: a feed fetch/parse failed:', result.reason?.message || result.reason);
+    }
+  }
+
+  if (allChildren.length === 0) {
+    // If we have a stale cache, return it; otherwise throw so the route returns 500
+    if (cached) return { ...cached.data, cached: true };
+    throw new Error('No posts from any feed');
+  }
+
+  const seen = new Set();
+  const posts = [];
+  for (const child of allChildren) {
+    if (!child || child.kind !== 't3') continue;
+    const data = child.data;
+    if (!data || data.over_18 || seen.has(data.id)) continue;
+    seen.add(data.id);
+
+    const isSelfPost = !!data.is_self;
+    const selftextRaw = isSelfPost && typeof data.selftext === 'string' ? data.selftext : '';
+    const selftext = selftextRaw.length > 140 ? selftextRaw.slice(0, 137) + '...' : selftextRaw;
+
+    posts.push({
+      id: data.id,
+      title: data.title,
+      subreddit: data.subreddit,
+      link: `https://www.reddit.com${data.permalink}`,
+      author: data.author,
+      pubDate: new Date(data.created_utc * 1000).toISOString(),
+      imageUrl: pickPreviewImageOrNull(data),
+      selftext: selftext || undefined,
+      score: typeof data.score === 'number' ? data.score : undefined,
+      numComments: typeof data.num_comments === 'number' ? data.num_comments : undefined,
+      postHint: data.post_hint || undefined,
+    });
+  }
+
+  // ENRICHMENT — some subreddits (notably r/news) strip preview data from
+  // listing endpoints. For posts missing imageUrl, batch-fetch via by_id
+  // where preview data is returned. One OAuth call regardless of count.
+  const needEnrichment = posts.filter((p) => !p.imageUrl);
+
+  // Fetch OAuth token once — shared by both enrichment and top-comments passes.
+  // If this fails, both passes degrade to no-op (posts return without
+  // enrichment / without top comments).
+  let accessToken = null;
+  if (needEnrichment.length > 0 || withTopComments) {
+    try {
+      accessToken = await getAppOnlyAccessToken();
+    } catch (e) {
+      console.warn('getAggregatedFeed: could not get access token, skipping enrichment and top comments:', e.message);
+    }
+  }
+
+  if (needEnrichment.length > 0) {
+    const fromCache = [];
+    const toFetch = [];
+    for (const post of needEnrichment) {
+      const fullname = `t3_${post.id}`;
+      const cachedEnrichment = enrichmentCache.get(fullname);
+      if (cachedEnrichment !== undefined) {
+        fromCache.push({ post, enrichment: cachedEnrichment });
+      } else {
+        toFetch.push(post);
+      }
+    }
+    // Apply cached enrichments first
+    for (const { post, enrichment } of fromCache) {
+      if (enrichment) {
+        if (enrichment.imageUrl) post.imageUrl = enrichment.imageUrl;
+        if (enrichment.postHint) post.postHint = enrichment.postHint;
+      }
+    }
+    // Batch-fetch any uncached candidates
+    if (toFetch.length > 0 && accessToken) {
+      // Reddit accepts up to 100 fullnames per /by_id request
+      const CHUNK_SIZE = 100;
+      for (let i = 0; i < toFetch.length; i += CHUNK_SIZE) {
+        const chunk = toFetch.slice(i, i + CHUNK_SIZE);
+        const fullnames = chunk.map((p) => `t3_${p.id}`).join(',');
+        const url = `https://oauth.reddit.com/by_id/${fullnames}?raw_json=1`;
+        try {
+          const response = await nodeFetch(url, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'User-Agent': userAgent,
+            },
+          });
+          if (!response.ok) {
+            console.warn(`getAggregatedFeed: by_id enrichment returned ${response.status}, leaving ${chunk.length} posts un-enriched`);
+            // Cache the misses so we don't retry storms — short TTL since this
+            // could be transient (rate limit, etc.)
+            for (const post of chunk) {
+              enrichmentCache.set(`t3_${post.id}`, null, { ttl: 1000 * 60 * 5 });
+            }
+            continue;
+          }
+          const json = await response.json();
+          const children = (json && json.data && json.data.children) || [];
+          // Index returned children by id for quick lookup
+          const byId = new Map();
+          for (const child of children) {
+            if (child && child.kind === 't3' && child.data) {
+              byId.set(child.data.id, child.data);
+            }
+          }
+          // Apply enrichment to each post in the chunk
+          for (const post of chunk) {
+            const data = byId.get(post.id);
+            const enrichment = data
+              ? {
+                  imageUrl: pickPreviewImageOrNull(data),
+                  postHint: data.post_hint || null,
+                }
+              : null;
+            // Success path: cache with default 1h TTL (failures use 5min above to allow faster retry on transient errors)
+            enrichmentCache.set(`t3_${post.id}`, enrichment);
+            if (enrichment) {
+              if (enrichment.imageUrl) post.imageUrl = enrichment.imageUrl;
+              if (enrichment.postHint) post.postHint = enrichment.postHint;
+            }
+          }
+        } catch (error) {
+          console.warn('getAggregatedFeed: enrichment fetch threw:', error.message);
+          // Cache the misses briefly to avoid retry storms
+          for (const post of chunk) {
+            enrichmentCache.set(`t3_${post.id}`, null, { ttl: 1000 * 60 * 5 });
+          }
+        }
+      }
+    }
+  }
+
+  if (withTopComments && posts.length > 0 && accessToken) {
+    const targets = posts.slice(0, TOP_COMMENT_TARGET_COUNT);
+    const commentResults = await Promise.allSettled(
+      targets.map((post) => getTopComment(`t3_${post.id}`, { prisma, accessToken }))
+    );
+    commentResults.forEach((r, i) => {
+      if (r.status === 'fulfilled' && r.value) {
+        targets[i].topComment = r.value;
+      }
+    });
+  }
+
+  const payload = {
+    posts,
+    generatedAt: new Date().toISOString(),
+  };
+  jsonCache.set(cacheKey, { data: payload, timestamp: now });
+  return { ...payload, cached: false };
+}
+
 module.exports = {
   getTrendingFromRSS,
   getTopPostsFromJSON,
   getTopComment,
+  getAggregatedFeed,
   topCommentCache, // exported for testing/inspection only
+  enrichmentCache, // exported for testing/inspection only
 };
