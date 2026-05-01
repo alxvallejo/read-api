@@ -16,6 +16,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 const nodeFetch = require('node-fetch');
 const { LRUCache } = require('lru-cache');
+const { pickPreviewImage } = require('./services/redditMediaService');
 
 // Cache Reddit post data for share previews — post metadata is effectively immutable
 const postCache = new LRUCache({
@@ -62,17 +63,6 @@ function escapeHtml(str = '') {
     .replace(/'/g, '&#039;');
 }
 
-function pickPreviewImage(post) {
-  try {
-    const preview = post && post.preview && post.preview.images && post.preview.images[0];
-    if (preview && preview.source && preview.source.url) {
-      return preview.source.url.replace(/&amp;/g, '&');
-    }
-  } catch (_) {}
-  const thumb = post && post.thumbnail;
-  if (thumb && /^https?:\/\//.test(thumb)) return thumb;
-  return PUBLIC_BASE_URL ? PUBLIC_BASE_URL + '/reddzit-hero.png' : '/reddzit-hero.png';
-}
 
 async function fetchRedditPublic(fullname) {
   // Return cached post data if available
