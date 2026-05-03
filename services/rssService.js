@@ -232,7 +232,9 @@ async function getTopComment(fullname, { prisma, accessToken } = {}) {
 const { pickPreviewImageOrNull } = require('./redditMediaService');
 const { getAppOnlyAccessToken } = require('../controllers/redditProxyController');
 
-const FEED_URL_BASE = 'https://www.reddit.com';
+// OAuth-authenticated endpoint — Reddit blocks unauthenticated www.reddit.com
+// requests from cloud IPs (403). Listings, enrichment, and comments all use OAuth.
+const FEED_URL_BASE = 'https://oauth.reddit.com';
 
 /**
  * Build the list of feed URLs to aggregate based on the requested view.
@@ -275,12 +277,27 @@ async function getAggregatedFeed({ subreddit, withTopComments = true, prisma = n
     return { ...cached.data, cached: true };
   }
 
+  // OAuth token shared across listing fetches, by_id enrichment, and top-comment
+  // fetches. Required for listings to work in production (Reddit blocks cloud IPs
+  // from unauthenticated www.reddit.com endpoints with 403).
+  let accessToken = null;
+  try {
+    accessToken = await getAppOnlyAccessToken();
+  } catch (e) {
+    console.warn('getAggregatedFeed: could not get access token:', e.message);
+  }
+
   const urls = buildFeedUrls(normalizedSub);
   const userAgent = process.env.USER_AGENT || 'Reddzit/1.0';
 
   const parsedResults = await Promise.allSettled(
     urls.map(async (url) => {
-      const response = await nodeFetch(url, { headers: { 'User-Agent': userAgent } });
+      const response = await nodeFetch(url, {
+        headers: {
+          'User-Agent': userAgent,
+          ...(accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {}),
+        },
+      });
       if (!response.ok) return [];
       const json = await response.json();
       return (json && json.data && json.data.children) || [];
@@ -332,19 +349,8 @@ async function getAggregatedFeed({ subreddit, withTopComments = true, prisma = n
   // ENRICHMENT — some subreddits (notably r/news) strip preview data from
   // listing endpoints. For posts missing imageUrl, batch-fetch via by_id
   // where preview data is returned. One OAuth call regardless of count.
+  // (accessToken was fetched above, shared across listings/enrichment/comments.)
   const needEnrichment = posts.filter((p) => !p.imageUrl);
-
-  // Fetch OAuth token once — shared by both enrichment and top-comments passes.
-  // If this fails, both passes degrade to no-op (posts return without
-  // enrichment / without top comments).
-  let accessToken = null;
-  if (needEnrichment.length > 0 || withTopComments) {
-    try {
-      accessToken = await getAppOnlyAccessToken();
-    } catch (e) {
-      console.warn('getAggregatedFeed: could not get access token, skipping enrichment and top comments:', e.message);
-    }
-  }
 
   if (needEnrichment.length > 0) {
     const fromCache = [];
