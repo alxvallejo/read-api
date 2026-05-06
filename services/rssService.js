@@ -30,7 +30,7 @@ const nodeFetch = require('node-fetch');
 
 // Cache top comments per post fullname. Top comments on hero posts don't
 // change much in an hour, and the same post is likely visible to many users.
-const topCommentCache = new LRUCache({
+const topCommentsCache = new LRUCache({
   max: 2000,
   ttl: 1000 * 60 * 60, // 1 hour
 });
@@ -163,36 +163,37 @@ async function getTopPostsFromJSON(subreddit = 'all', limit = 25, sort = 'hot') 
   }
 }
 
+const TOP_COMMENTS_PER_POST = 5;
+
 /**
- * Fetch the top comment for a Reddit post (by fullname like "t3_abc123").
- * Returns { body, author, score } truncated to 180 chars on the body, or null.
+ * Fetch the top comments for a Reddit post (by fullname like "t3_abc123").
+ * Returns an array of { id, body, author, score, permalink } (body truncated
+ * to 180 chars), or null when no comments / Reddit unavailable.
  *
  * Cached aggressively (LRU, 1h) since top comments on popular posts are stable.
  * Honors the circuit breaker via redditService.isApiRestricted — returns null
  * (not throws) when Reddit is rate-limiting us, so the caller can degrade.
  */
-async function getTopComment(fullname, { prisma, accessToken } = {}) {
+async function getTopComments(fullname, { prisma, accessToken } = {}) {
   if (!fullname || !fullname.startsWith('t3_')) return null;
 
-  const cached = topCommentCache.get(fullname);
+  const cached = topCommentsCache.get(fullname);
   if (cached !== undefined) return cached;
 
   if (prisma) {
     const restricted = await redditService.isApiRestricted(prisma);
     if (restricted) {
-      // Cache the null result briefly so we don't hammer the breaker check
-      topCommentCache.set(fullname, null, { ttl: 1000 * 60 * 5 });
+      topCommentsCache.set(fullname, null, { ttl: 1000 * 60 * 5 });
       return null;
     }
   }
 
   if (!accessToken) {
-    // Caller forgot to pass it — treat as soft failure
     return null;
   }
 
   const id = fullname.replace(/^t3_/, '');
-  const url = `https://oauth.reddit.com/comments/${encodeURIComponent(id)}.json?limit=1&depth=1&sort=top`;
+  const url = `https://oauth.reddit.com/comments/${encodeURIComponent(id)}.json?limit=${TOP_COMMENTS_PER_POST}&depth=1&sort=top`;
   let result = null;
   try {
     const response = await nodeFetch(url, {
@@ -202,30 +203,35 @@ async function getTopComment(fullname, { prisma, accessToken } = {}) {
       },
     });
     if (!response.ok) {
-      console.warn(`getTopComment: ${fullname} returned ${response.status}`);
-      // Cache failures briefly to avoid retry storms
-      topCommentCache.set(fullname, null, { ttl: 1000 * 60 * 5 });
+      console.warn(`getTopComments: ${fullname} returned ${response.status}`);
+      topCommentsCache.set(fullname, null, { ttl: 1000 * 60 * 5 });
       return null;
     }
     const json = await response.json();
-    // Reddit returns [postListing, commentListing]; we want the first comment
     const commentListing = Array.isArray(json) ? json[1] : null;
-    const top = commentListing && commentListing.data && commentListing.data.children && commentListing.data.children[0];
-    const data = top && top.kind === 't1' ? top.data : null;
-    if (data && typeof data.body === 'string' && data.body.length > 0) {
+    const children = (commentListing && commentListing.data && commentListing.data.children) || [];
+    const comments = [];
+    for (const child of children) {
+      if (!child || child.kind !== 't1' || !child.data) continue;
+      const data = child.data;
+      if (typeof data.body !== 'string' || data.body.length === 0) continue;
       const body = data.body.length > 180 ? data.body.slice(0, 177) + '...' : data.body;
-      result = {
+      comments.push({
+        id: data.id,
         body,
         author: data.author || '[deleted]',
         score: typeof data.score === 'number' ? data.score : 0,
-      };
+        permalink: data.permalink || null,
+      });
+      if (comments.length >= TOP_COMMENTS_PER_POST) break;
     }
+    result = comments.length > 0 ? comments : null;
   } catch (error) {
-    console.warn(`getTopComment error for ${fullname}:`, error.message);
+    console.warn(`getTopComments error for ${fullname}:`, error.message);
     result = null;
   }
 
-  topCommentCache.set(fullname, result);
+  topCommentsCache.set(fullname, result);
   return result;
 }
 
@@ -269,7 +275,7 @@ const TOP_COMMENT_TARGET_COUNT = 7;
  */
 async function getAggregatedFeed({ subreddit, withTopComments = true, prisma = null } = {}) {
   const normalizedSub = subreddit ? subreddit.trim().toLowerCase() : null;
-  const cacheKey = `agg:${normalizedSub || 'top'}:${withTopComments ? 'tc1' : 'tc0'}`;
+  const cacheKey = `agg:${normalizedSub || 'top'}:${withTopComments ? 'tc2' : 'tc0'}`;
 
   const now = Date.now();
   const cached = jsonCache.get(cacheKey);
@@ -434,11 +440,11 @@ async function getAggregatedFeed({ subreddit, withTopComments = true, prisma = n
   if (withTopComments && posts.length > 0 && accessToken) {
     const targets = posts.slice(0, TOP_COMMENT_TARGET_COUNT);
     const commentResults = await Promise.allSettled(
-      targets.map((post) => getTopComment(`t3_${post.id}`, { prisma, accessToken }))
+      targets.map((post) => getTopComments(`t3_${post.id}`, { prisma, accessToken }))
     );
     commentResults.forEach((r, i) => {
-      if (r.status === 'fulfilled' && r.value) {
-        targets[i].topComment = r.value;
+      if (r.status === 'fulfilled' && r.value && r.value.length > 0) {
+        targets[i].topComments = r.value;
       }
     });
   }
@@ -454,8 +460,8 @@ async function getAggregatedFeed({ subreddit, withTopComments = true, prisma = n
 module.exports = {
   getTrendingFromRSS,
   getTopPostsFromJSON,
-  getTopComment,
+  getTopComments,
   getAggregatedFeed,
-  topCommentCache, // exported for testing/inspection only
+  topCommentsCache, // exported for testing/inspection only
   enrichmentCache, // exported for testing/inspection only
 };
