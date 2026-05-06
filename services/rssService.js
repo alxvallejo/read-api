@@ -245,14 +245,27 @@ const FEED_URL_BASE = 'https://oauth.reddit.com';
 const ALLOWED_SORTS = new Set(['best', 'hot', 'new', 'top', 'rising', 'controversial']);
 const SORTS_WITH_TIME_RANGE = new Set(['top', 'controversial']);
 
+const TOPIC_SUBS = {
+  news: ['news', 'worldnews', 'politics', 'upliftingnews', 'nottheonion'],
+  'less-political': ['news', 'worldnews', 'upliftingnews', 'nottheonion', 'science'],
+};
+const ALLOWED_TOPICS = new Set(Object.keys(TOPIC_SUBS));
+
 /**
  * Build the list of feed URLs to aggregate based on the requested view.
  *
- * - sort provided => single-sort fetch from r/<subreddit> (or r/all when no subreddit)
- * - sort omitted, no subreddit => "/top" view: r/all + r/popular mix
- * - sort omitted, subreddit set => three sorts of that single sub
+ * - topic provided  => plus-syntax fetch across the topic's curated sub list
+ * - sort provided   => single-sort fetch from r/<subreddit> (or r/all)
+ * - neither, no sub => "/top" view: r/all + r/popular mix
+ * - neither, sub    => three sorts of that single sub
  */
-function buildFeedUrls(subreddit, sort) {
+function buildFeedUrls(subreddit, sort, topic) {
+  if (topic && TOPIC_SUBS[topic]) {
+    const subs = TOPIC_SUBS[topic].join('+');
+    const sortPath = sort || 'hot';
+    const timeRange = SORTS_WITH_TIME_RANGE.has(sortPath) ? '&t=day' : '';
+    return [`${FEED_URL_BASE}/r/${subs}/${sortPath}.json?limit=50${timeRange}`];
+  }
   if (sort) {
     const sub = subreddit || 'all';
     const timeRange = SORTS_WITH_TIME_RANGE.has(sort) ? '&t=day' : '';
@@ -282,11 +295,14 @@ const TOP_COMMENT_TARGET_COUNT = 7;
  *
  * Returns: { posts: FeedPost[], generatedAt: string, cached: boolean }
  */
-async function getAggregatedFeed({ subreddit, sort, withTopComments = true, prisma = null } = {}) {
+async function getAggregatedFeed({ subreddit, sort, topic, withTopComments = true, prisma = null } = {}) {
   const normalizedSub = subreddit ? subreddit.trim().toLowerCase() : null;
   const rawSort = typeof sort === 'string' ? sort.trim().toLowerCase() : null;
   const normalizedSort = rawSort && ALLOWED_SORTS.has(rawSort) ? rawSort : null;
-  const cacheKey = `agg:${normalizedSub || 'top'}:${normalizedSort || 'mix'}:${withTopComments ? 'tc2' : 'tc0'}`;
+  const rawTopic = typeof topic === 'string' ? topic.trim().toLowerCase() : null;
+  const normalizedTopic = rawTopic && ALLOWED_TOPICS.has(rawTopic) ? rawTopic : null;
+  const subKey = normalizedTopic ? `topic-${normalizedTopic}` : (normalizedSub || 'top');
+  const cacheKey = `agg:${subKey}:${normalizedSort || 'mix'}:${withTopComments ? 'tc2' : 'tc0'}`;
 
   const now = Date.now();
   const cached = jsonCache.get(cacheKey);
@@ -304,7 +320,7 @@ async function getAggregatedFeed({ subreddit, sort, withTopComments = true, pris
     console.warn('getAggregatedFeed: could not get access token:', e.message);
   }
 
-  const urls = buildFeedUrls(normalizedSub, normalizedSort);
+  const urls = buildFeedUrls(normalizedSub, normalizedSort, normalizedTopic);
   const userAgent = process.env.USER_AGENT || 'Reddzit/1.0';
 
   const parsedResults = await Promise.allSettled(
