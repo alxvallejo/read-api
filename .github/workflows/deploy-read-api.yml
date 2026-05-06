@@ -94,7 +94,16 @@ jobs:
             ./node_modules/.bin/prisma generate
             ./node_modules/.bin/prisma migrate deploy
 
-            
+            # Seed cron jobs (idempotent — skips entries that already exist)
+            node prisma/seed-cron-jobs.js || echo "Cron seed failed; continuing"
+
+            # Refresh the homepage news snapshot. Snapshot dir defaults to
+            # /var/www/read-api/snapshots/ and is created by the job.
+            # Failure here must not block the deploy — the hourly cron will
+            # retry on schedule.
+            mkdir -p /var/www/read-api/snapshots
+            node jobs/generateNewsSnapshot.js || echo "Snapshot regen failed; hourly cron will retry"
+
             if [ ! -x "$PM2" ]; then
               echo "Project-local pm2 not found at $PM2. Ensure CI packaged node_modules."
               exit 1

@@ -46,6 +46,14 @@ const cronJobs = [
     cronExpression: '0 10 * * *',
     enabled: true,
   },
+  {
+    name: 'news-snapshot',
+    displayName: 'News Snapshot',
+    description: 'Pre-renders /news feed JSON to dist/snapshots/news.json so nginx can serve the homepage instantly. Runs hourly.',
+    script: 'jobs/generateNewsSnapshot.js',
+    cronExpression: '0 * * * *',
+    enabled: true,
+  },
 ];
 
 async function seed() {
