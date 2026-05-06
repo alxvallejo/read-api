@@ -242,13 +242,22 @@ const { getAppOnlyAccessToken } = require('../controllers/redditProxyController'
 // requests from cloud IPs (403). Listings, enrichment, and comments all use OAuth.
 const FEED_URL_BASE = 'https://oauth.reddit.com';
 
+const ALLOWED_SORTS = new Set(['best', 'hot', 'new', 'top', 'rising', 'controversial']);
+const SORTS_WITH_TIME_RANGE = new Set(['top', 'controversial']);
+
 /**
  * Build the list of feed URLs to aggregate based on the requested view.
  *
- * - subreddit === undefined => the "/top" view: r/all + r/popular mix (matches the legacy frontend behavior)
- * - subreddit === any name  => three sorts of that single sub
+ * - sort provided => single-sort fetch from r/<subreddit> (or r/all when no subreddit)
+ * - sort omitted, no subreddit => "/top" view: r/all + r/popular mix
+ * - sort omitted, subreddit set => three sorts of that single sub
  */
-function buildFeedUrls(subreddit) {
+function buildFeedUrls(subreddit, sort) {
+  if (sort) {
+    const sub = subreddit || 'all';
+    const timeRange = SORTS_WITH_TIME_RANGE.has(sort) ? '&t=day' : '';
+    return [`${FEED_URL_BASE}/r/${sub}/${sort}.json?limit=50${timeRange}`];
+  }
   if (!subreddit) {
     return [
       `${FEED_URL_BASE}/r/all/hot.json?limit=50`,
@@ -273,9 +282,11 @@ const TOP_COMMENT_TARGET_COUNT = 7;
  *
  * Returns: { posts: FeedPost[], generatedAt: string, cached: boolean }
  */
-async function getAggregatedFeed({ subreddit, withTopComments = true, prisma = null } = {}) {
+async function getAggregatedFeed({ subreddit, sort, withTopComments = true, prisma = null } = {}) {
   const normalizedSub = subreddit ? subreddit.trim().toLowerCase() : null;
-  const cacheKey = `agg:${normalizedSub || 'top'}:${withTopComments ? 'tc2' : 'tc0'}`;
+  const rawSort = typeof sort === 'string' ? sort.trim().toLowerCase() : null;
+  const normalizedSort = rawSort && ALLOWED_SORTS.has(rawSort) ? rawSort : null;
+  const cacheKey = `agg:${normalizedSub || 'top'}:${normalizedSort || 'mix'}:${withTopComments ? 'tc2' : 'tc0'}`;
 
   const now = Date.now();
   const cached = jsonCache.get(cacheKey);
@@ -293,7 +304,7 @@ async function getAggregatedFeed({ subreddit, withTopComments = true, prisma = n
     console.warn('getAggregatedFeed: could not get access token:', e.message);
   }
 
-  const urls = buildFeedUrls(normalizedSub);
+  const urls = buildFeedUrls(normalizedSub, normalizedSort);
   const userAgent = process.env.USER_AGENT || 'Reddzit/1.0';
 
   const parsedResults = await Promise.allSettled(
