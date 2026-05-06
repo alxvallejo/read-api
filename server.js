@@ -246,14 +246,19 @@ app.get('/api/hourly-pulse/latest', dailyController.getLatestHourlyPulseReport);
 app.get('/api/hourly-pulse/:hour', dailyController.getHourlyPulseReportByHour);
 
 // Trending posts API (no OAuth required, uses Reddit's public JSON)
+const ALLOWED_TRENDING_SORTS = new Set(['best', 'hot', 'new', 'top', 'rising', 'controversial']);
+
 app.get('/api/trending/rss', async (req, res) => {
   try {
     const rawSubreddit = typeof req.query.subreddit === 'string' ? req.query.subreddit.trim().toLowerCase() : '';
     const subreddit = /^[a-z][a-z0-9_]{2,20}$/.test(rawSubreddit) ? rawSubreddit : undefined;
+    const rawSort = typeof req.query.sort === 'string' ? req.query.sort.trim().toLowerCase() : '';
+    const sort = ALLOWED_TRENDING_SORTS.has(rawSort) ? rawSort : undefined;
     const withTopComments = req.query.topComments !== '0';
 
     const result = await rssService.getAggregatedFeed({
       subreddit,
+      sort,
       withTopComments,
       prisma,
     });
