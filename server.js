@@ -249,6 +249,34 @@ app.get('/api/hourly-pulse/:hour', dailyController.getHourlyPulseReportByHour);
 const ALLOWED_TRENDING_SORTS = new Set(['best', 'hot', 'new', 'top', 'rising', 'controversial']);
 const ALLOWED_TRENDING_TOPICS = new Set(['news', 'less-political']);
 
+// Lazy per-post top-comments endpoint. The trending feed hydrates the first
+// TOP_COMMENT_TARGET_COUNT (25) posts inline; this endpoint serves the
+// long-tail posts on demand from the client carousel.
+const POST_ID_RE = /^[a-z0-9]{4,10}$/;
+
+app.get('/api/trending/posts/:id/top-comments', async (req, res) => {
+  try {
+    const id = typeof req.params.id === 'string' ? req.params.id.trim().toLowerCase() : '';
+    if (!POST_ID_RE.test(id)) {
+      return res.status(400).json({ error: 'Invalid post id' });
+    }
+
+    let accessToken = null;
+    try {
+      accessToken = await redditProxy.getAppOnlyAccessToken();
+    } catch (e) {
+      console.warn('top-comments endpoint: could not get access token:', e.message);
+    }
+
+    const comments = await rssService.getTopComments(`t3_${id}`, { prisma, accessToken });
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json({ comments: comments || [] });
+  } catch (error) {
+    console.error('Top-comments endpoint error:', error);
+    res.status(500).json({ error: 'Failed to fetch comments' });
+  }
+});
+
 app.get('/api/trending/rss', async (req, res) => {
   try {
     const rawSubreddit = typeof req.query.subreddit === 'string' ? req.query.subreddit.trim().toLowerCase() : '';
