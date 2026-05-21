@@ -27,6 +27,11 @@ const jsonCache = new Map(); // key -> { data, timestamp }
 const { LRUCache } = require('lru-cache');
 const redditService = require('./redditService');
 const nodeFetch = require('node-fetch');
+const pLimit = require('p-limit');
+
+// Bounded concurrency for the inline comment fan-out. With cap 25 the worst
+// case is 25 simultaneous TCP connections to oauth.reddit.com without this.
+const commentLimit = pLimit(10);
 
 // Cache top comments per post fullname. Top comments on hero posts don't
 // change much in an hour, and the same post is likely visible to many users.
@@ -286,11 +291,13 @@ function buildFeedUrls(subreddit, sort, topic) {
   ];
 }
 
-const TOP_COMMENT_TARGET_COUNT = 7;
+const TOP_COMMENT_TARGET_COUNT = 25;
 
 /**
  * Aggregate multiple Reddit JSON sorts into a deduped feed of posts.
- * Extracts image URLs and (optionally) attaches top comments to the first 7 posts.
+ * Extracts image URLs and (optionally) attaches top comments to the first
+ * TOP_COMMENT_TARGET_COUNT posts (25). Posts beyond this can be fetched on
+ * demand via GET /api/trending/posts/:id/top-comments.
  *
  * Returns: { posts: FeedPost[], generatedAt: string, cached: boolean }
  */
@@ -466,7 +473,9 @@ async function getAggregatedFeed({ subreddit, sort, topic, withTopComments = tru
   if (withTopComments && posts.length > 0 && accessToken) {
     const targets = posts.slice(0, TOP_COMMENT_TARGET_COUNT);
     const commentResults = await Promise.allSettled(
-      targets.map((post) => getTopComments(`t3_${post.id}`, { prisma, accessToken }))
+      targets.map((post) =>
+        commentLimit(() => getTopComments(`t3_${post.id}`, { prisma, accessToken }))
+      )
     );
     commentResults.forEach((r, i) => {
       if (r.status === 'fulfilled' && r.value && r.value.length > 0) {
