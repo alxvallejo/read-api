@@ -726,5 +726,11 @@ async function syncCronJobs() {
   }
 }
 
-// Run sync after a short delay to ensure DB is ready
-setTimeout(syncCronJobs, 3000);
+// Run sync after a short delay to ensure DB is ready.
+// Skipped outside production so local dev doesn't spawn detached PM2 jobs
+// (those run with NODE_ENV=production, write to the real DB, and survive nodemon restarts).
+if (process.env.NODE_ENV === 'production') {
+  setTimeout(syncCronJobs, 3000);
+} else {
+  console.log('[CronSync] Skipping — NODE_ENV is not production');
+}

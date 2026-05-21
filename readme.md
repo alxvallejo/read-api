@@ -26,7 +26,7 @@ npm run dev
 
 ## Environment Variables
 
-Define these in your server environment (PM2 ecosystem, shell profile, or deployment env). Do not expose secrets in the frontend.
+Define these in your server environment (the server's `.env` file at `/var/www/read-api/.env` in prod, shell profile, or deployment env). Do not expose secrets in the frontend.
 
 - `REDDIT_CLIENT_ID`: Reddit app client id.
 - `REDDIT_CLIENT_SECRET`: Reddit app client secret (server-only).
@@ -53,27 +53,6 @@ export PORT=3000
 pm2 start server.js --name read-api --update-env
 ```
 
-Example (PM2 ecosystem):
-
-```js
-// ecosystem.config.js
-module.exports = {
-  apps: [{
-    name: 'read-api',
-    script: 'server.js',
-    instances: 2,
-    env: {
-      PORT: 3000,
-      CORS_ORIGIN: 'https://reddzit.seojeek.com',
-      REDDIT_CLIENT_ID: '... set on server ...',
-      REDDIT_CLIENT_SECRET: '... set on server ...',
-      REDDIT_REDIRECT_URI: 'https://reddzit.seojeek.com/reddit',
-      USER_AGENT: 'Reddzit/1.0',
-    },
-  }],
-};
-```
-
 ### Recommended: .env for local, PM2 for production
 
 This project loads a `.env` file via `dotenv` for local development, while production continues to use PM2 (or systemd) environment configuration. Precedence is: PM2/systemd env > shell env > `.env`.
@@ -87,7 +66,7 @@ Local setup with `.env`:
 - Start the server: `npm run dev` or `node server.js`.
 
 Production with PM2:
-- Keep envs in `ecosystem.config.js` (or set them in the shell before `pm2 start`).
+- Keep envs in `/var/www/read-api/.env` on the server (the deploy workflow sources this file before starting PM2).
 - Restart with `pm2 restart read-api --update-env` to reload env changes.
 
 Production with systemd (alternative):
