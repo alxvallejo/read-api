@@ -167,8 +167,8 @@ const TOP_COMMENTS_PER_POST = 5;
 
 /**
  * Fetch the top comments for a Reddit post (by fullname like "t3_abc123").
- * Returns an array of { id, body, author, score, permalink } (body truncated
- * to 180 chars), or null when no comments / Reddit unavailable.
+ * Returns an array of { id, body, author, score, permalink } with full body,
+ * or null when no comments / Reddit unavailable.
  *
  * Cached aggressively (LRU, 1h) since top comments on popular posts are stable.
  * Honors the circuit breaker via redditService.isApiRestricted — returns null
@@ -215,10 +215,9 @@ async function getTopComments(fullname, { prisma, accessToken } = {}) {
       if (!child || child.kind !== 't1' || !child.data) continue;
       const data = child.data;
       if (typeof data.body !== 'string' || data.body.length === 0) continue;
-      const body = data.body.length > 180 ? data.body.slice(0, 177) + '...' : data.body;
       comments.push({
         id: data.id,
-        body,
+        body: data.body,
         author: data.author || '[deleted]',
         score: typeof data.score === 'number' ? data.score : 0,
         permalink: data.permalink || null,
