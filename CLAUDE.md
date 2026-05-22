@@ -69,6 +69,22 @@ Share links (`/p/:fullname` and `/p/:fullname/:slug`) generate OG/Twitter meta t
 
 Single-server setup (PM2). In-memory LRU is faster and requires no additional infrastructure. If the app ever goes multi-server, PostgreSQL (already available) would serve as a shared cache before Redis would be needed.
 
+## Top Comments Hydration (Trending Feed)
+
+`/api/trending/rss` hydrates the first **25** posts with up to 5 top comments each (constant `TOP_COMMENT_TARGET_COUNT` in `services/rssService.js`). Fan-out is gated by `p-limit(10)` to bound simultaneous TCP connections to `oauth.reddit.com`.
+
+Posts beyond index 24 are served on demand via:
+
+`GET /api/trending/posts/:id/top-comments` → `{ comments: TrendingPostTopComment[] }`
+
+This endpoint:
+- Validates `:id` against `/^[a-z0-9]{4,10}$/` (Reddit base-36 post id shape)
+- Reuses the same 1-hour per-post LRU cache (`topCommentsCache` in `rssService.js`)
+- Honors the `redditService.isApiRestricted` circuit breaker — returns `{ comments: [] }` on 5xx / rate limit, never propagates errors to the client
+- Sets `Cache-Control: public, max-age=300`
+
+The frontend (`reddzit/src/components/TopFeed.tsx`) lazy-fetches via this endpoint for slides ≥ 25 with a `current+2` prefetch window driven by the carousel's `onVisibleRangeChange` callback.
+
 ## Cron Jobs
 
 Background jobs in `jobs/` run via PM2. They use app-only Reddit tokens and count against the rate limit. Managed through the admin dashboard Jobs tab.
