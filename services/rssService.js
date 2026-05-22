@@ -169,6 +169,7 @@ async function getTopPostsFromJSON(subreddit = 'all', limit = 25, sort = 'hot') 
 }
 
 const TOP_COMMENTS_PER_POST = 5;
+const TOP_COMMENTS_FETCH_LIMIT = 15;
 
 /**
  * Fetch the top comments for a Reddit post (by fullname like "t3_abc123").
@@ -198,7 +199,7 @@ async function getTopComments(fullname, { prisma, accessToken } = {}) {
   }
 
   const id = fullname.replace(/^t3_/, '');
-  const url = `https://oauth.reddit.com/comments/${encodeURIComponent(id)}.json?limit=${TOP_COMMENTS_PER_POST}&depth=1&sort=top`;
+  const url = `https://oauth.reddit.com/comments/${encodeURIComponent(id)}.json?limit=${TOP_COMMENTS_FETCH_LIMIT}&depth=1&sort=top`;
   let result = null;
   try {
     const response = await nodeFetch(url, {
@@ -220,6 +221,11 @@ async function getTopComments(fullname, { prisma, accessToken } = {}) {
       if (!child || child.kind !== 't1' || !child.data) continue;
       const data = child.data;
       if (typeof data.body !== 'string' || data.body.length === 0) continue;
+      // Skip moderator-distinguished and stickied comments — these are typically
+      // AutoModerator / subreddit bot announcements (e.g. PoliticsModeratorBot)
+      // that Reddit pins above actual top comments under sort=top.
+      if (data.distinguished === 'moderator' || data.distinguished === 'admin') continue;
+      if (data.stickied === true) continue;
       comments.push({
         id: data.id,
         body: data.body,
