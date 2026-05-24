@@ -221,6 +221,7 @@ async function getTopComments(fullname, { prisma, accessToken } = {}) {
       if (!child || child.kind !== 't1' || !child.data) continue;
       const data = child.data;
       if (typeof data.body !== 'string' || data.body.length === 0) continue;
+      if (data.body === '[removed]') continue;
       // Skip moderator-distinguished and stickied comments — these are typically
       // AutoModerator / subreddit bot announcements (e.g. PoliticsModeratorBot)
       // that Reddit pins above actual top comments under sort=top.
