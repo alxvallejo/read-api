@@ -214,8 +214,16 @@ async function getTopComments(fullname, { prisma, accessToken } = {}) {
       return null;
     }
     const json = await response.json();
-    const commentListing = Array.isArray(json) ? json[1] : null;
-    const children = (commentListing && commentListing.data && commentListing.data.children) || [];
+    // Reddit returns [postListing, commentListing] for /comments/<id>.json.
+    // Anything else (e.g. {message: "Quota exceeded"} on a soft rate-limit) means
+    // we got a 200 but no usable data. Cache briefly so we retry, instead of
+    // letting the default 1h TTL pin null on a perfectly good post.
+    if (!Array.isArray(json) || !json[1] || !json[1].data) {
+      console.warn(`getTopComments: ${fullname} returned unexpected payload shape`);
+      topCommentsCache.set(fullname, null, { ttl: 1000 * 60 * 5 });
+      return null;
+    }
+    const children = json[1].data.children || [];
     const comments = [];
     for (const child of children) {
       if (!child || child.kind !== 't1' || !child.data) continue;
@@ -239,7 +247,8 @@ async function getTopComments(fullname, { prisma, accessToken } = {}) {
     result = comments.length > 0 ? comments : null;
   } catch (error) {
     console.warn(`getTopComments error for ${fullname}:`, error.message);
-    result = null;
+    topCommentsCache.set(fullname, null, { ttl: 1000 * 60 * 5 });
+    return null;
   }
 
   topCommentsCache.set(fullname, result);
