@@ -237,6 +237,74 @@ const redditProxy = {
     }
   },
 
+  // Public endpoint for fetching a single comment plus its parent post,
+  // shaped as { comment, post } for shared comment links (/c/:fullname).
+  async getCommentPublic(req, res) {
+    try {
+      const { fullname } = req.params;
+
+      if (!fullname || !/^t1_[a-z0-9]+$/i.test(fullname)) {
+        return res.status(400).json({ error: 'Invalid comment fullname format' });
+      }
+
+      const accessToken = await getAppOnlyAccessToken();
+      const authHeaders = {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'User-Agent': getUA(),
+        },
+      };
+
+      const infoUrl = `https://oauth.reddit.com/api/info?id=${encodeURIComponent(fullname)}`;
+      const r = await redditProxy.proxyRequest(infoUrl, authHeaders);
+      if (!r.ok || !r.json) {
+        return res.status(r.status || 502).json({ error: 'Failed to fetch comment' });
+      }
+
+      const c = r.json?.data?.children?.[0]?.data;
+      if (!c) {
+        return res.status(404).json({ error: 'Comment not found' });
+      }
+
+      const comment = {
+        id: c.name,
+        body: c.body || '',
+        author: c.author || '[deleted]',
+        score: typeof c.score === 'number' ? c.score : 0,
+        permalink: c.permalink || '',
+        createdAt: c.created_utc ? new Date(c.created_utc * 1000).toISOString() : null,
+      };
+
+      // Resolve the parent post from the comment's link_id (t3_...).
+      let post = null;
+      const linkId = c.link_id;
+      if (linkId && /^t3_[a-z0-9]+$/i.test(linkId)) {
+        const postRes = await redditProxy.proxyRequest(
+          `https://oauth.reddit.com/api/info?id=${encodeURIComponent(linkId)}`,
+          authHeaders
+        );
+        const p = postRes.json?.data?.children?.[0]?.data;
+        if (p) {
+          const rawPreview =
+            p.preview?.images?.[0]?.source?.url || p.thumbnail || null;
+          const isUrl = rawPreview && /^https?:\/\//i.test(rawPreview);
+          post = {
+            fullname: p.name,
+            title: p.title || '',
+            subreddit: p.subreddit || '',
+            permalink: p.permalink || '',
+            previewImage: isUrl ? rawPreview.replace(/&amp;/g, '&') : null,
+          };
+        }
+      }
+
+      return res.json({ comment, post });
+    } catch (error) {
+      console.error('getCommentPublic error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  },
+
   async getAccessToken(req, res) {
     try {
       const { code, redirect_uri, client_id, client_secret } = req.body;

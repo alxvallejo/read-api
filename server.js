@@ -315,6 +315,8 @@ app.post('/api/reddit/save', redditProxy.save);
 app.get('/api/reddit/by_id/:fullname', redditProxy.getById);
 // Public endpoint for fetching post data without auth (for shared links)
 app.get('/api/reddit/public/by_id/:fullname', redditProxy.getByIdPublic);
+// Public endpoint for fetching a comment + parent post (shared comment links)
+app.get('/api/reddit/public/comment/:fullname', redditProxy.getCommentPublic);
 
 // Subreddit discovery & rotating feed endpoints
 app.get('/api/reddit/subreddits/popular', redditProxy.getPopularSubreddits);
