@@ -78,6 +78,31 @@ Inspecting runtime envs on the server:
 - process env (by PID): `pid=$(systemctl show -p MainPID --value read-api); sudo tr '\0' '\n' </proc/$pid/environ | sort`
 - PM2 app config: `pm2 describe read-api`
 
+### Production: PM2 log rotation (prevent disk-full deploy failures)
+
+By default PM2 writes stdout/stderr to `~/.pm2/logs/` and **never rotates them**. On a
+long-running server these grow without bound and eventually fill the disk. When the disk
+is full, the frontend deploy workflow fails at its scp/upload step with a misleading error
+like `tar: dist.tar.gz: Wrote only 6656 of 10240 bytes` — that is `ENOSPC`, not a network
+problem. Set up rotation once so this can't recur:
+
+```
+pm2 install pm2-logrotate
+pm2 set pm2-logrotate:max_size 10M       # rotate a log once it passes 10 MB
+pm2 set pm2-logrotate:retain 7           # keep 7 rotated files, delete older
+pm2 set pm2-logrotate:compress true      # gzip rotated logs
+pm2 set pm2-logrotate:rotateInterval '0 0 * * *'   # also rotate daily at midnight
+```
+
+If the disk is already full, reclaim space immediately, then verify:
+
+```
+pm2 flush                 # truncate current PM2 logs
+df -h                     # confirm the partition is no longer at 100%
+df -i                     # also check inodes aren't exhausted
+du -xh ~/.pm2/logs 2>/dev/null | sort -rh | head   # see which logs were the culprit
+```
+
 ## OAuth Token Proxy (Recommendation)
 
 To avoid CORS issues and keep secrets safe, the backend should perform the Reddit OAuth token exchange and refresh using server-side env vars. Do not send the Reddit secret from the client.
