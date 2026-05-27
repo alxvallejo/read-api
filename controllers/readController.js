@@ -1,6 +1,7 @@
 var read = require('node-readability');
 const fetch = require('node-fetch');
 const { LRUCache } = require('lru-cache');
+const { cleanContent } = require('../utils/cleanContent');
 
 // Cache extracted article content for 24 hours
 const articleCache = new LRUCache({
@@ -99,7 +100,7 @@ module.exports = {
                 if (!article) {
                   return reject(null);
                 }
-                let content = article ? article.content : null;
+                let content = article ? cleanContent(article.content) : null;
                 let title = article ? article.title : null;
                 if (!article) {
                   resolve(null);
@@ -131,7 +132,7 @@ module.exports = {
             if (!article) {
               reject(null);
             }
-            let content = article ? article.content : null;
+            let content = article ? cleanContent(article.content) : null;
             let title = article ? article.title : null;
 
             if (!article) {
