@@ -443,7 +443,6 @@ app.post('/api/stories/:id/unpublish', storiesController.unpublishStory);
 app.get('/api/stories/:id/public', storiesController.getPublicStory);
 
 // Feedback API
-const emailService = require('./services/emailService.js');
 app.post('/api/feedback', async (req, res) => {
   try {
     const { message, page } = req.body;
@@ -461,19 +460,6 @@ app.post('/api/feedback', async (req, res) => {
       },
     });
 
-    // Send admin email notification (fire-and-forget)
-    emailService.sendAdminNotification({
-      subject: `New Reddzit Feedback`,
-      body: `
-        <h2 style="color: #ea580c;">New Feedback Submitted</h2>
-        <p style="color: #374151; font-size: 16px; line-height: 1.6; background: #f8fafc; padding: 16px; border-radius: 8px;">
-          ${message.trim().replace(/</g, '&lt;').replace(/>/g, '&gt;')}
-        </p>
-        <p style="color: #6b7280; font-size: 14px;">Page: ${page || 'N/A'}</p>
-        <p style="color: #9ca3af; font-size: 12px;">Submitted at ${new Date().toISOString()}</p>
-      `,
-    }).catch(err => console.error('Admin email failed:', err));
-
     res.json({ success: true });
   } catch (error) {
     console.error('feedback error:', error);
@@ -485,6 +471,7 @@ app.post('/api/feedback', async (req, res) => {
 app.get('/api/admin/stats', adminController.requireAdmin, adminController.getStats);
 app.get('/api/admin/users', adminController.requireAdmin, adminController.listUsers);
 app.get('/api/admin/subscriptions', adminController.requireAdmin, adminController.listSubscriptions);
+app.get('/api/admin/feedback', adminController.requireAdmin, adminController.listFeedback);
 app.post('/api/admin/users/:redditUsername/pro', adminController.requireAdmin, adminController.setUserPro);
 app.post('/api/admin/users/:redditUsername/admin', adminController.requireAdmin, adminController.setUserAdmin);
 app.get('/api/admin/briefings', adminController.requireAdmin, adminController.listBriefings);
@@ -513,9 +500,6 @@ app.get('/api/admin/cache-stats', adminController.requireAdmin, (req, res) => {
 });
 app.get('/api/admin/reddit-usage/logs', adminController.requireAdmin, adminController.getRedditUsageLogs);
 app.delete('/api/admin/reddit-usage/logs', adminController.requireAdmin, adminController.deleteRedditUsageLogs);
-
-// Email Testing
-app.post('/api/admin/test-email', adminController.requireAdmin, adminController.sendTestEmail);
 
 // Dynamic share preview route (inject OG/Twitter tags)
 app.get('/p/:fullname', async (req, res) => {

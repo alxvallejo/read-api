@@ -1,7 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const { Pool } = require('pg');
 const { PrismaPg } = require('@prisma/adapter-pg');
-const emailService = require('../services/emailService');
 
 // Initialize Prisma
 // Note: In production, ensure this is singleton or handled correctly
@@ -212,16 +211,6 @@ const dailyController = {
           source: source || 'unknown'
         }
       });
-
-      // Send welcome email for new subscriptions
-      if (isNewSubscription) {
-        try {
-          await emailService.sendWelcomeEmail(email);
-        } catch (emailError) {
-          console.error('Failed to send welcome email:', emailError);
-          // Don't fail the subscription if email fails
-        }
-      }
 
       res.json({ success: true, id: sub.id, isNew: isNewSubscription });
     } catch (error) {

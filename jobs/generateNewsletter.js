@@ -6,7 +6,6 @@ const newsService = require('../services/newsService');
 const rssService = require('../services/rssService');
 const llmService = require('../services/llmService');
 const readController = require('../controllers/readController');
-const emailService = require('../services/emailService');
 
 const connectionString = process.env.DATABASE_URL;
 const pool = new Pool({ connectionString });
@@ -182,33 +181,7 @@ async function generateNewsletter(force = false) {
   });
 
   console.log(`Newsletter published: "${digest.title}"`);
-
-  // 10. Send to subscribers
-  const fullIssue = await prisma.newsletterIssue.findUnique({
-    where: { id: issue.id },
-    include: { stories: { orderBy: { rank: 'asc' } } },
-  });
-
-  const subscribers = await prisma.subscription.findMany({
-    where: { status: 'ACTIVE' },
-  });
-
-  if (subscribers.length > 0) {
-    console.log(`Sending newsletter to ${subscribers.length} subscribers...`);
-    const result = await emailService.sendNewsletterEmail(subscribers, fullIssue);
-    
-    await prisma.newsletterIssue.update({
-      where: { id: issue.id },
-      data: {
-        sentAt: new Date(),
-        recipientCount: result.sent,
-      },
-    });
-
-    console.log(`Newsletter sent: ${result.sent} success, ${result.failed} failed`);
-  } else {
-    console.log('No active subscribers. Newsletter stored but not emailed.');
-  }
+  console.log('Newsletter stored. Email delivery is disabled.');
 
   await cleanup();
   console.log('Newsletter generation complete!');

@@ -41,10 +41,10 @@ const cronJobs = [
   {
     name: 'daily-newsletter',
     displayName: 'Daily Newsletter',
-    description: 'Multi-source daily digest combining NewsAPI + Reddit, sent to subscribers at 10:00 UTC',
+    description: 'Multi-source daily digest combining NewsAPI + Reddit. Email delivery disabled; generation only.',
     script: 'jobs/generateNewsletter.js',
     cronExpression: '0 10 * * *',
-    enabled: true,
+    enabled: false,
   },
   {
     name: 'news-snapshot',
