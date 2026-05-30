@@ -534,7 +534,7 @@ app.get('/p/:fullname', async (req, res) => {
     const canonicalUrl = (post && post.permalink) ? `https://www.reddit.com${post.permalink}` : ogUrl;
 
     const injected = injectMeta(indexHtml, {
-      title: `${BRAND_TITLE} — ${baseTitle}`,
+      title: baseTitle === BRAND_TITLE ? BRAND_TITLE : `${BRAND_TITLE} — ${baseTitle}`,
       ogTitle: baseTitle,
       ogDescription: description,
       ogImage: imageUrl,
@@ -678,7 +678,7 @@ app.get('/p/:fullname/:slug', async (req, res) => {
     const canonicalUrl = (post && post.permalink) ? `https://www.reddit.com${post.permalink}` : ogUrl;
 
     const injected = injectMeta(indexHtml, {
-      title: `${BRAND_TITLE} — ${baseTitle}`,
+      title: baseTitle === BRAND_TITLE ? BRAND_TITLE : `${BRAND_TITLE} — ${baseTitle}`,
       ogTitle: baseTitle,
       ogDescription: description,
       ogImage: imageUrl,
