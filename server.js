@@ -37,6 +37,11 @@ const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || '';
 let INDEX_HTML_CACHE = null;
 let INDEX_HTML_MTIME = null;
 
+// Brand positioning for SSR share-preview fallbacks. Keep in sync with the
+// static tags in reddzit-refresh/index.html so shared links match the homepage.
+const BRAND_TITLE = 'Reddzit: Your AI-personalized Reddit feed';
+const BRAND_DESCRIPTION = 'Reddzit analyzes your saved Reddit posts to build a feed tailored to your real interests — no rage-bait, no infinite scroll. Just the posts and communities that respect your time.';
+
 async function readIndexHtml() {
   if (!FRONTEND_DIST_DIR) return null;
   const indexPath = path.join(FRONTEND_DIST_DIR, 'index.html');
@@ -520,16 +525,16 @@ app.get('/p/:fullname', async (req, res) => {
     const isComment = !!(post && ((post.name && post.name.startsWith('t1_')) || post.body));
     const baseTitle = isComment
       ? `Comment by u/${post.author}${post && post.link_title ? ` on "${post.link_title}"` : ''}`
-      : (post && post.title) || 'Reddzit: Review your saved Reddit posts';
+      : (post && post.title) || BRAND_TITLE;
     const description = isComment
-      ? (post && post.body ? String(post.body).slice(0, 200) : 'Review your saved Reddit posts with Reddzit.')
-      : (post && post.selftext ? String(post.selftext).slice(0, 200) : 'Review your saved Reddit posts with Reddzit.');
+      ? (post && post.body ? String(post.body).slice(0, 200) : BRAND_DESCRIPTION)
+      : (post && post.selftext ? String(post.selftext).slice(0, 200) : BRAND_DESCRIPTION);
     const imageUrl = pickPreviewImage(post);
     const ogUrl = (PUBLIC_BASE_URL || '') + req.originalUrl;
     const canonicalUrl = (post && post.permalink) ? `https://www.reddit.com${post.permalink}` : ogUrl;
 
     const injected = injectMeta(indexHtml, {
-      title: `Reddzit: Review your saved Reddit posts — ${baseTitle}`,
+      title: `${BRAND_TITLE} — ${baseTitle}`,
       ogTitle: baseTitle,
       ogDescription: description,
       ogImage: imageUrl,
@@ -663,17 +668,17 @@ app.get('/p/:fullname/:slug', async (req, res) => {
     const isComment = !!(post && ((post.name && post.name.startsWith('t1_')) || post.body));
     const articleTitle = (post && post.link_title) || slugToTitle(slug);
     const baseTitle = isComment
-      ? articleTitle || 'Reddzit: Review your saved Reddit posts'
-      : (post && post.title) || slugToTitle(slug) || 'Reddzit: Review your saved Reddit posts';
+      ? articleTitle || BRAND_TITLE
+      : (post && post.title) || slugToTitle(slug) || BRAND_TITLE;
     const description = isComment
-      ? (post && post.body ? String(post.body).slice(0, 200) : 'Review your saved Reddit posts with Reddzit.')
-      : (post && post.selftext ? String(post.selftext).slice(0, 200) : 'Review your saved Reddit posts with Reddzit.');
+      ? (post && post.body ? String(post.body).slice(0, 200) : BRAND_DESCRIPTION)
+      : (post && post.selftext ? String(post.selftext).slice(0, 200) : BRAND_DESCRIPTION);
     const imageUrl = pickPreviewImage(post);
     const ogUrl = (PUBLIC_BASE_URL || '') + req.originalUrl;
     const canonicalUrl = (post && post.permalink) ? `https://www.reddit.com${post.permalink}` : ogUrl;
 
     const injected = injectMeta(indexHtml, {
-      title: `Reddzit: Review your saved Reddit posts — ${baseTitle}`,
+      title: `${BRAND_TITLE} — ${baseTitle}`,
       ogTitle: baseTitle,
       ogDescription: description,
       ogImage: imageUrl,
