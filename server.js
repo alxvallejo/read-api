@@ -39,8 +39,8 @@ let INDEX_HTML_MTIME = null;
 
 // Brand positioning for SSR share-preview fallbacks. Keep in sync with the
 // static tags in reddzit-refresh/index.html so shared links match the homepage.
-const BRAND_TITLE = 'Reddzit: Your AI-personalized Reddit feed';
-const BRAND_DESCRIPTION = 'Reddzit analyzes your saved Reddit posts to build a feed tailored to your real interests — no rage-bait, no infinite scroll. Just the posts and communities that respect your time.';
+const BRAND_TITLE = 'Reddzit: Keep track of your saved Reddit posts and comments';
+const BRAND_DESCRIPTION = 'Keep track of your saved Reddit posts and comments. A clean reader for browsing top stories, saving what matters, and revisiting it later — minus the doomscroll.';
 
 async function readIndexHtml() {
   if (!FRONTEND_DIST_DIR) return null;
